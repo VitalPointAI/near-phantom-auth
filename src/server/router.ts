@@ -106,18 +106,18 @@ export function createRouter(config: RouterConfig): Router {
       }
       
       // Verify passkey registration
-      const { verified, passkey } = await passkeyManager.finishRegistration(
+      const { verified, passkeyData } = await passkeyManager.finishRegistration(
         challengeId,
         response
       );
-      
-      if (!verified || !passkey) {
+
+      if (!verified || !passkeyData) {
         return res.status(400).json({ error: 'Passkey verification failed' });
       }
-      
+
       // Create NEAR account via MPC
       const mpcAccount = await mpcManager.createAccount(tempUserId);
-      
+
       // Create user
       const user = await db.createUser({
         codename,
@@ -125,10 +125,18 @@ export function createRouter(config: RouterConfig): Router {
         mpcPublicKey: mpcAccount.mpcPublicKey,
         derivationPath: mpcAccount.derivationPath,
       });
-      
-      // Update passkey with real user ID
-      // (In a real implementation, we'd update the passkey record)
-      
+
+      // Store the passkey credential linked to the new user
+      await db.createPasskey({
+        credentialId: passkeyData.credentialId,
+        userId: user.id,
+        publicKey: passkeyData.publicKey,
+        counter: passkeyData.counter,
+        deviceType: passkeyData.deviceType,
+        backedUp: passkeyData.backedUp,
+        transports: passkeyData.transports,
+      });
+
       // Create session
       const session = await sessionManager.createSession(user.id, res, {
         ipAddress: req.ip,
