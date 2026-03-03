@@ -229,3 +229,22 @@ export { generateCodename, isValidCodename } from './codename.js';
 export { createPostgresAdapter, POSTGRES_SCHEMA } from './db/adapters/postgres.js';
 export { createOAuthManager } from './oauth/index.js';
 export { createOAuthRouter } from './oauth/router.js';
+
+// Standalone WebAuthn utilities (framework-agnostic)
+export {
+  createRegistrationOptions,
+  verifyRegistration,
+  createAuthenticationOptions,
+  verifyAuthentication,
+  base64urlToUint8Array,
+  uint8ArrayToBase64url,
+  type CreateRegistrationOptionsInput,
+  type CreateRegistrationOptionsResult,
+  type VerifyRegistrationInput,
+  type VerifyRegistrationResult,
+  type CreateAuthenticationOptionsInput,
+  type CreateAuthenticationOptionsResult,
+  type StoredCredential,
+  type VerifyAuthenticationInput,
+  type VerifyAuthenticationResult,
+} from './webauthn.js';

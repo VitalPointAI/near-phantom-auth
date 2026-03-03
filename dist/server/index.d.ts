@@ -1,6 +1,7 @@
 import { Response, Request, Router, RequestHandler } from 'express';
 import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as AnonAuthConfig } from '../index-Bywvf8De.js';
 export { i as AnonUser, j as OAuthProvider, k as OAuthUser, U as User, l as UserType } from '../index-Bywvf8De.js';
+export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.js';
 
 /**
  * Session Management

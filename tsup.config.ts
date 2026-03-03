@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     'server/index': 'src/server/index.ts',
+    'webauthn/index': 'src/webauthn/index.ts',
     'client/index': 'src/client/index.ts',
   },
   format: ['esm', 'cjs'], // Support both ESM and CJS
