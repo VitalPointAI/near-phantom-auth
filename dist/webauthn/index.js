@@ -97,7 +97,7 @@ async function verifyAuthentication(input) {
       expectedRPID,
       credential: {
         id: credential.id,
-        publicKey: credential.publicKey,
+        publicKey: new Uint8Array(credential.publicKey),
         counter: credential.counter,
         transports: credential.transports
       }
