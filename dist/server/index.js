@@ -839,25 +839,6 @@ async function accountExists(accountId, networkId) {
     return false;
   }
 }
-async function createTestnetAccount(accountId) {
-  const seed = randomBytes(32);
-  const publicKeyBytes = derivePublicKey(seed);
-  const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
-  const helperUrl = "https://helper.testnet.near.org/account";
-  const response = await fetch(helperUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      newAccountId: accountId,
-      newAccountPublicKey: publicKey
-    })
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Testnet helper error: ${response.status} - ${errorText}`);
-  }
-  return publicKey;
-}
 function generateAccountName(userId, prefix) {
   const hash = createHash("sha256").update(userId).digest("hex");
   const shortHash = hash.substring(0, 12);
@@ -1025,42 +1006,12 @@ var MPCAccountManager = class {
       derivationPath,
       mpcContractId: this.mpcContractId
     });
-    const exists = await accountExists(nearAccountId, this.networkId);
-    if (exists) {
-      console.log("[MPC] Account already exists:", nearAccountId);
-      return {
-        nearAccountId,
-        derivationPath,
-        mpcPublicKey: "existing-account",
-        onChain: true
-      };
-    }
-    if (this.networkId === "testnet") {
-      try {
-        const publicKey = await createTestnetAccount(nearAccountId);
-        console.log("[MPC] Account created:", nearAccountId);
-        return {
-          nearAccountId,
-          derivationPath,
-          mpcPublicKey: publicKey,
-          onChain: true
-        };
-      } catch (error) {
-        console.error("[MPC] Account creation failed:", error);
-        return {
-          nearAccountId,
-          derivationPath,
-          mpcPublicKey: "creation-failed",
-          onChain: false
-        };
-      }
-    }
     try {
       const seed = createHash("sha256").update(`implicit-${userId}`).digest();
       const publicKeyBytes = derivePublicKey(seed);
       const implicitAccountId = publicKeyBytes.toString("hex");
       const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
-      console.log("[MPC] Created mainnet implicit account:", implicitAccountId);
+      console.log(`[MPC] Created ${this.networkId} implicit account:`, implicitAccountId);
       const alreadyExists = await accountExists(implicitAccountId, this.networkId);
       if (alreadyExists) {
         console.log("[MPC] Implicit account already funded:", implicitAccountId);
@@ -2128,11 +2079,11 @@ function createRouter(config) {
       if (!isValidCodename(codename)) {
         return res.status(400).json({ error: "Invalid codename format" });
       }
-      const { verified, passkey } = await passkeyManager.finishRegistration(
+      const { verified, passkeyData } = await passkeyManager.finishRegistration(
         challengeId,
         response
       );
-      if (!verified || !passkey) {
+      if (!verified || !passkeyData) {
         return res.status(400).json({ error: "Passkey verification failed" });
       }
       const mpcAccount = await mpcManager.createAccount(tempUserId);
@@ -2141,6 +2092,15 @@ function createRouter(config) {
         nearAccountId: mpcAccount.nearAccountId,
         mpcPublicKey: mpcAccount.mpcPublicKey,
         derivationPath: mpcAccount.derivationPath
+      });
+      await db.createPasskey({
+        credentialId: passkeyData.credentialId,
+        userId: user.id,
+        publicKey: passkeyData.publicKey,
+        counter: passkeyData.counter,
+        deviceType: passkeyData.deviceType,
+        backedUp: passkeyData.backedUp,
+        transports: passkeyData.transports
       });
       const session = await sessionManager.createSession(user.id, res, {
         ipAddress: req.ip,

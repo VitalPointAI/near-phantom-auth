@@ -408,42 +408,7 @@ export class MPCAccountManager {
       mpcContractId: this.mpcContractId,
     });
 
-    // Check if account already exists
-    const exists = await accountExists(nearAccountId, this.networkId);
-    if (exists) {
-      console.log('[MPC] Account already exists:', nearAccountId);
-      return {
-        nearAccountId,
-        derivationPath,
-        mpcPublicKey: 'existing-account',
-        onChain: true,
-      };
-    }
-
-    // Create account on testnet
-    if (this.networkId === 'testnet') {
-      try {
-        const publicKey = await createTestnetAccount(nearAccountId);
-        console.log('[MPC] Account created:', nearAccountId);
-        
-        return {
-          nearAccountId,
-          derivationPath,
-          mpcPublicKey: publicKey,
-          onChain: true,
-        };
-      } catch (error) {
-        console.error('[MPC] Account creation failed:', error);
-        return {
-          nearAccountId,
-          derivationPath,
-          mpcPublicKey: 'creation-failed',
-          onChain: false,
-        };
-      }
-    }
-
-    // Mainnet: Use implicit accounts
+    // Both mainnet and testnet: Use implicit accounts
     // Implicit account ID = hex of public key (64 chars)
     try {
       const seed = createHash('sha256').update(`implicit-${userId}`).digest();
@@ -451,7 +416,7 @@ export class MPCAccountManager {
       const implicitAccountId = publicKeyBytes.toString('hex');
       const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
       
-      console.log('[MPC] Created mainnet implicit account:', implicitAccountId);
+      console.log(`[MPC] Created ${this.networkId} implicit account:`, implicitAccountId);
       
       // Check if account already funded/exists
       const alreadyExists = await accountExists(implicitAccountId, this.networkId);
