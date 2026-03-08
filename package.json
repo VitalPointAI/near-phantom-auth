@@ -63,6 +63,7 @@
     "@near-js/providers": "^2.5.1",
     "@near-js/signers": "^2.5.1",
     "@near-js/transactions": "^2.5.1",
+    "@near-js/types": "^2.5.1",
     "@near-js/utils": "^2.5.1",
     "@simplewebauthn/server": "^13.2.3",
     "bs58": "^6.0.0",
