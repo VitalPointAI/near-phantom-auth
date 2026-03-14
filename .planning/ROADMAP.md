@@ -12,7 +12,7 @@ This milestone hardens a published anonymous passkey authentication SDK from fun
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Atomic Security Fixes** - Eliminate timing side-channel, fix session persistence, correct MPC math and transaction format
+- [x] **Phase 1: Atomic Security Fixes** - Eliminate timing side-channel, fix session persistence, correct MPC math and transaction format
 - [ ] **Phase 2: Input Validation** - Add zod schemas to all 16 route endpoints; reject malformed requests before they reach handlers
 - [ ] **Phase 3: Structured Logging** - Replace 40+ console statements with injectable pino logger with redaction of sensitive fields
 - [ ] **Phase 4: HTTP Defenses** - Add tiered rate limiting and opt-in CSRF protection inside library-owned routers
@@ -34,9 +34,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. Treasury funding calls use integer yoctoNEAR math; no floating-point rounding errors occur for amounts smaller than 1 NEAR
 **Plans**: 3 plans
 Plans:
-- [ ] 01-01-PLAN.md — Test infrastructure, type contracts (vitest config, test stubs, interface additions)
-- [ ] 01-02-PLAN.md — Session security fixes (SEC-01 timing-safe comparison, BUG-03 refresh DB persistence)
-- [ ] 01-03-PLAN.md — MPC correctness fixes (DEBT-02 bs58, BUG-01 yoctoNEAR, BUG-02 signed tx, SEC-04 derivation salt)
+- [x] 01-01-PLAN.md — Test infrastructure, type contracts (vitest config, test stubs, interface additions)
+- [x] 01-02-PLAN.md — Session security fixes (SEC-01 timing-safe comparison, BUG-03 refresh DB persistence)
+- [x] 01-03-PLAN.md — MPC correctness fixes (DEBT-02 bs58, BUG-01 yoctoNEAR, BUG-02 signed tx, SEC-04 derivation salt)
 
 ### Phase 2: Input Validation
 **Goal**: All 16 route handlers reject structurally invalid or missing request fields with a structured 400 before any business logic executes
@@ -116,7 +116,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Atomic Security Fixes | 2/3 | In Progress|  |
+| 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
 | 2. Input Validation | 0/TBD | Not started | - |
 | 3. Structured Logging | 0/TBD | Not started | - |
 | 4. HTTP Defenses | 0/TBD | Not started | - |

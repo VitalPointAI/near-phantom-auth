@@ -18,8 +18,8 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Bug Fixes
 
-- [ ] **BUG-01**: NEAR amount conversion uses BigInt-based math instead of floating-point
-- [ ] **BUG-02**: Signed transaction format includes public key in signature wrapper
+- [x] **BUG-01**: NEAR amount conversion uses BigInt-based math instead of floating-point
+- [x] **BUG-02**: Signed transaction format includes public key in signature wrapper
 - [x] **BUG-03**: Session refresh updates `expiresAt` in database (not just cookie)
 - [ ] **BUG-04**: `verifyRecoveryWallet()` checks specific wallet public key against access key list
 - [ ] **BUG-05**: OAuth recovery password either delivered to user via email or auto-recovery skipped until email works
@@ -41,7 +41,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 ### Tech Debt
 
 - [ ] **DEBT-01**: Codename system uses compound codenames (ALPHA-BRAVO-42) for larger namespace
-- [ ] **DEBT-02**: Custom `base58Encode()` replaced with `bs58.encode()` consistently
+- [x] **DEBT-02**: Custom `base58Encode()` replaced with `bs58.encode()` consistently
 - [ ] **DEBT-03**: SQLite removed from DatabaseConfig union type
 - [ ] **DEBT-04**: Dead testnet helper API code removed or cleaned up
 
@@ -103,8 +103,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEC-04 | Phase 1 | Complete |
 | SEC-05 | Phase 2 | Pending |
 | SEC-06 | Phase 3 | Pending |
-| BUG-01 | Phase 1 | Pending |
-| BUG-02 | Phase 1 | Pending |
+| BUG-01 | Phase 1 | Complete |
+| BUG-02 | Phase 1 | Complete |
 | BUG-03 | Phase 1 | Complete |
 | BUG-04 | Phase 5 | Pending |
 | BUG-05 | Phase 6 | Pending |
@@ -117,7 +117,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | INFRA-04 | Phase 6 | Pending |
 | INFRA-05 | Phase 4 | Pending |
 | DEBT-01 | Phase 6 | Pending |
-| DEBT-02 | Phase 1 | Pending |
+| DEBT-02 | Phase 1 | Complete |
 | DEBT-03 | Phase 6 | Pending |
 | DEBT-04 | Phase 6 | Pending |
 | PERF-01 | Phase 6 | Pending |
