@@ -58,6 +58,7 @@
     "url": "git+https://github.com/jim-agent/near-phantom-auth.git"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1009.0",
     "@near-js/crypto": "^2.5.1",
     "@near-js/keystores": "^2.5.1",
     "@near-js/providers": "^2.5.1",
