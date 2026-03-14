@@ -10,6 +10,9 @@ import bs58 from 'bs58';
 import BN from 'bn.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
+import { createTransaction, actionCreators } from '@near-js/transactions';
+import { KeyPairSigner } from '@near-js/signers';
+import { PublicKey, KeyPair } from '@near-js/crypto';
 
 export interface MPCAccount {
   nearAccountId: string;
@@ -468,34 +471,122 @@ export class MPCAccountManager {
 
   /**
    * Add a recovery wallet as an access key to the MPC account
-   * 
+   *
    * This creates an on-chain link without storing it in our database.
    * The recovery wallet can be used to prove ownership and create new passkeys.
+   *
+   * @param nearAccountId - The user's NEAR implicit account ID
+   * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
    */
   async addRecoveryWallet(
     nearAccountId: string,
-    recoveryWalletId: string
+    recoveryWalletPublicKey: string
   ): Promise<{ success: boolean; txHash?: string }> {
-    // In production, this would:
-    // 1. Create an AddKey transaction
-    // 2. Sign it with the MPC key
-    // 3. Submit to NEAR
-    //
-    // The recovery wallet gets a FunctionCall access key that can only:
-    // - Call our recovery contract
-    // - Not transfer funds or do anything else
-    
-    this.log.info({ nearAccountId, recoveryWalletId }, 'Adding recovery wallet');
+    this.log.info({ nearAccountId }, 'Adding recovery wallet via AddKey transaction');
 
-    // TODO: Implement full MPC signing flow
-    // For now, mark as pending
-    void nearAccountId;
-    void recoveryWalletId;
-    
-    return {
-      success: true,
-      txHash: `pending-${Date.now()}`,
-    };
+    if (!this.treasuryPrivateKey) {
+      this.log.error('No treasury private key configured — cannot sign AddKey transaction');
+      return { success: false };
+    }
+
+    try {
+      const rpcUrl = getRPCUrl(this.networkId);
+
+      // Build signer from treasury key — call getPublicKey() ONCE for both nonce fetch and tx creation
+      // Cast required: treasuryPrivateKey is `string` but KeyPair.fromString expects `ed25519:${string}`
+      const keyPair = KeyPair.fromString(this.treasuryPrivateKey as `ed25519:${string}`);
+      const signer = new KeyPairSigner(keyPair);
+      const signerPublicKey = await signer.getPublicKey();
+      const signerPublicKeyStr = signerPublicKey.toString();
+
+      // Fetch access key nonce + block hash for the signer's key on the user's account
+      const accessKeyResponse = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'get-access-key',
+          method: 'query',
+          params: {
+            request_type: 'view_access_key',
+            finality: 'final',
+            account_id: nearAccountId,
+            public_key: signerPublicKeyStr,
+          },
+        }),
+      });
+
+      const accessKeyResult = await accessKeyResponse.json() as {
+        result?: { nonce: number; block_hash: string };
+        error?: { cause?: { name: string }; message?: string };
+      };
+
+      if (accessKeyResult.error || !accessKeyResult.result) {
+        this.log.error(
+          { err: new Error(JSON.stringify(accessKeyResult.error)) },
+          'Could not fetch access key for AddKey transaction'
+        );
+        return { success: false };
+      }
+
+      const nonce = BigInt(accessKeyResult.result.nonce) + 1n;
+      // blockHash MUST be Uint8Array (raw bytes), NOT the base58 string
+      const blockHashBytes = bs58.decode(accessKeyResult.result.block_hash);
+
+      // Build the AddKey action using @near-js/transactions actionCreators
+      const { addKey, fullAccessKey } = actionCreators;
+      const recoveryPublicKey = PublicKey.fromString(recoveryWalletPublicKey);
+      const action = addKey(recoveryPublicKey, fullAccessKey());
+
+      // Create the transaction — signerId and receiverId are both the user's account
+      const tx = createTransaction(
+        nearAccountId,     // signerId
+        signerPublicKey,   // must match signer.getPublicKey()
+        nearAccountId,     // receiverId (adding key to user's own account)
+        nonce,
+        [action],
+        blockHashBytes     // Uint8Array, NOT base58 string
+      );
+
+      // Sign — internally: encodeTransaction(tx) → sha256 → sign
+      const [, signedTx] = await signer.signTransaction(tx);
+
+      // Encode for RPC broadcast
+      const encoded = Buffer.from(signedTx.encode()).toString('base64');
+
+      // Broadcast via broadcast_tx_commit
+      const submitResponse = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'send-tx',
+          method: 'broadcast_tx_commit',
+          params: [encoded],
+        }),
+      });
+
+      const submitResult = await submitResponse.json() as {
+        result?: { transaction: { hash: string } };
+        error?: { data?: string; message?: string };
+      };
+
+      if (submitResult.error) {
+        this.log.error(
+          { err: new Error(submitResult.error.data || submitResult.error.message || 'Transaction failed') },
+          'AddKey transaction broadcast failed'
+        );
+        return { success: false };
+      }
+
+      const txHash = submitResult.result?.transaction?.hash || 'unknown';
+      this.log.info({ nearAccountId, txHash }, 'Recovery wallet added via AddKey');
+
+      return { success: true, txHash };
+    } catch (error) {
+      this.log.error({ err: error }, 'addRecoveryWallet failed');
+      return { success: false };
+    }
   }
 
   /**
