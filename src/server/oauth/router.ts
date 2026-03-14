@@ -9,7 +9,7 @@ import type { Request, Response } from 'express';
 import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
-import type { DatabaseAdapter, OAuthConfig, OAuthProvider } from '../../types/index.js';
+import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig } from '../../types/index.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
@@ -27,6 +27,10 @@ export interface OAuthRouterConfig {
   ipfsRecovery?: IPFSRecoveryManager;
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
   logger?: Logger;
+  /** Optional rate limiting config */
+  rateLimiting?: RateLimitConfig;
+  /** Optional CSRF config (Double Submit Cookie) */
+  csrf?: CsrfConfig;
 }
 
 export function createOAuthRouter(config: OAuthRouterConfig): Router {

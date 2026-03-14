@@ -11,7 +11,7 @@ import type { PasskeyManager } from './passkey.js';
 import type { MPCAccountManager } from './mpc.js';
 import type { WalletRecoveryManager } from './recovery/wallet.js';
 import type { IPFSRecoveryManager } from './recovery/ipfs.js';
-import type { DatabaseAdapter, CodenameConfig } from '../types/index.js';
+import type { DatabaseAdapter, CodenameConfig, RateLimitConfig, CsrfConfig } from '../types/index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
@@ -40,6 +40,10 @@ export interface RouterConfig {
   codename?: CodenameConfig;
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
   logger?: Logger;
+  /** Optional rate limiting config */
+  rateLimiting?: RateLimitConfig;
+  /** Optional CSRF config (Double Submit Cookie) */
+  csrf?: CsrfConfig;
 }
 
 export function createRouter(config: RouterConfig): Router {

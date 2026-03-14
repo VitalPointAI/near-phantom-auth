@@ -182,6 +182,8 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       oauthConfig: config.oauth,
       ipfsRecovery,
       logger,
+      rateLimiting: config.rateLimiting,
+      csrf: config.csrf,
     });
   }
 
@@ -199,6 +201,8 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     ipfsRecovery,
     codename: config.codename,
     logger,
+    rateLimiting: config.rateLimiting,
+    csrf: config.csrf,
   });
 
   return {
