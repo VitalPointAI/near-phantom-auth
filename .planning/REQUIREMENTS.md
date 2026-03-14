@@ -40,15 +40,15 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Tech Debt
 
-- [ ] **DEBT-01**: Codename system uses compound codenames (ALPHA-BRAVO-42) for larger namespace
+- [x] **DEBT-01**: Codename system uses compound codenames (ALPHA-BRAVO-42) for larger namespace
 - [x] **DEBT-02**: Custom `base58Encode()` replaced with `bs58.encode()` consistently
-- [ ] **DEBT-03**: SQLite removed from DatabaseConfig union type
-- [ ] **DEBT-04**: Dead testnet helper API code removed or cleaned up
+- [x] **DEBT-03**: SQLite removed from DatabaseConfig union type
+- [x] **DEBT-04**: Dead testnet helper API code removed or cleaned up
 
 ### Performance
 
 - [ ] **PERF-01**: OAuth user lookups use JOIN queries instead of N+1 sequential queries
-- [ ] **PERF-02**: IPFS gateway fallback uses `Promise.any()` for concurrent requests
+- [x] **PERF-02**: IPFS gateway fallback uses `Promise.any()` for concurrent requests
 
 ### Email Integration
 
@@ -116,12 +116,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | INFRA-03 | Phase 6 | Pending |
 | INFRA-04 | Phase 6 | Pending |
 | INFRA-05 | Phase 4 | Complete |
-| DEBT-01 | Phase 6 | Pending |
+| DEBT-01 | Phase 6 | Complete |
 | DEBT-02 | Phase 1 | Complete |
-| DEBT-03 | Phase 6 | Pending |
-| DEBT-04 | Phase 6 | Pending |
+| DEBT-03 | Phase 6 | Complete |
+| DEBT-04 | Phase 6 | Complete |
 | PERF-01 | Phase 6 | Pending |
-| PERF-02 | Phase 6 | Pending |
+| PERF-02 | Phase 6 | Complete |
 | EMAIL-01 | Phase 6 | Pending |
 | EMAIL-02 | Phase 6 | Pending |
 | TEST-01 | Phase 7 | Pending |

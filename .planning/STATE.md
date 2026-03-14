@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-14T18:48:58.349Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-14T20:23:21.048Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 17
+  completed_plans: 14
   percent: 100
 ---
 
@@ -62,6 +62,7 @@ Progress: [██████████] 100%
 | Phase 05-db-integrity-and-functional-stubs P01 | 2 | 2 tasks | 3 files |
 | Phase 05 P02 | 8 | 2 tasks | 1 files |
 | Phase 05-db-integrity-and-functional-stubs P03 | 15 | 2 tasks | 3 files |
+| Phase 06-scalability-tech-debt-and-email P02 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Treasury key cast to ed25519 template literal for KeyPair.fromString — KeyPairString type requires ed25519:X format; signing authority question deferred to testnet validation
 - [Phase 05-db-integrity-and-functional-stubs]: walletVerifyBodySchema and walletFinishBodySchema: signature is a WalletSignature object (signature/publicKey/message), not a plain string — schema was mismatched to the WalletRecoveryManager interface
 - [Phase 05-db-integrity-and-functional-stubs]: DELETE /account: destroySession before deleteUserSessions to invalidate auth cookie immediately; deleteRecoveryData is conditional on adapter support; returns 501 if deleteUser not implemented
+- [Phase 06-02]: isValidCodename NATO pattern uses optional second word segment (?:-[A-Z]+)? — accepts both ALPHA-7 (legacy) and ALPHA-BRAVO-42 (new)
+- [Phase 06-02]: Promise.any() with no AbortController in fetchFromIPFS — consumers needing timeouts use config.customFetch per PERF-02 spec
+- [Phase 06-02]: createTestnetAccount deleted after zero call sites confirmed — testnet helper API was dead code
 
 ### Pending Todos
 
@@ -117,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T18:44:50.701Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-03-14T20:23:21.043Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
