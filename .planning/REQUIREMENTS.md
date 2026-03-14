@@ -14,7 +14,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [ ] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
 - [x] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
 - [x] **SEC-05**: All endpoint request bodies validated at runtime with zod schemas
-- [ ] **SEC-06**: Sensitive data (treasury keys, derivation paths, MPC public keys) redacted from production logs
+- [x] **SEC-06**: Sensitive data (treasury keys, derivation paths, MPC public keys) redacted from production logs
 
 ### Bug Fixes
 
@@ -32,7 +32,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Structured logging replaces all console.log/error statements (pino or similar)
+- [x] **INFRA-01**: Structured logging replaces all console.log/error statements (pino or similar)
 - [ ] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
 - [ ] **INFRA-03**: OAuth state stored in database instead of in-memory Map
 - [ ] **INFRA-04**: Automatic expired session and challenge cleanup mechanism
@@ -102,7 +102,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEC-03 | Phase 4 | Pending |
 | SEC-04 | Phase 1 | Complete |
 | SEC-05 | Phase 2 | Complete — 02-01 |
-| SEC-06 | Phase 3 | Pending |
+| SEC-06 | Phase 3 | Complete |
 | BUG-01 | Phase 1 | Complete |
 | BUG-02 | Phase 1 | Complete |
 | BUG-03 | Phase 1 | Complete |
@@ -111,7 +111,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | STUB-01 | Phase 5 | Pending |
 | STUB-02 | Phase 5 | Pending |
 | STUB-03 | Phase 5 | Pending |
-| INFRA-01 | Phase 3 | Pending |
+| INFRA-01 | Phase 3 | Complete |
 | INFRA-02 | Phase 5 | Pending |
 | INFRA-03 | Phase 6 | Pending |
 | INFRA-04 | Phase 6 | Pending |
