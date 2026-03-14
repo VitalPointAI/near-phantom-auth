@@ -109,7 +109,12 @@ Plans:
   5. An OAuth user lookup executes one JOIN query, not three sequential queries — observable via query logging
   6. IPFS recovery backup retrieval uses concurrent gateway requests; the first successful response is returned without waiting for slower gateways
   7. After a successful OAuth registration, the user receives an email containing their recovery password (when AWS SES is configured)
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 06-01-PLAN.md — OAuth state to DB (INFRA-03) and JOIN-based OAuth user lookups (PERF-01)
+- [ ] 06-02-PLAN.md — Compound codenames (DEBT-01), remove sqlite type (DEBT-03), remove dead code (DEBT-04), concurrent IPFS fetch (PERF-02)
+- [ ] 06-03-PLAN.md — AWS SES email service (EMAIL-01), OAuth recovery email wiring (EMAIL-02, BUG-05)
+- [ ] 06-04-PLAN.md — Automatic cleanup scheduler for expired sessions, challenges, and OAuth states (INFRA-04)
 
 ### Phase 7: Test Coverage
 **Goal**: Every security-critical module has unit tests; every route handler has integration tests; adversarial inputs are tested explicitly
@@ -135,5 +140,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Structured Logging | 2/2 | Complete   | 2026-03-14 |
 | 4. HTTP Defenses | 3/3 | Complete   | 2026-03-14 |
 | 5. DB Integrity and Functional Stubs | 3/3 | Complete   | 2026-03-14 |
-| 6. Scalability, Tech Debt, and Email | 0/TBD | Not started | - |
+| 6. Scalability, Tech Debt, and Email | 0/4 | Not started | - |
 | 7. Test Coverage | 0/TBD | Not started | - |
