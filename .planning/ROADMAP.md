@@ -91,7 +91,11 @@ Plans:
   3. `verifyRecoveryWallet()` returns false for a NEAR account that has keys, but none of which match the registered recovery wallet's public key
   4. A user who completed recovery can call the passkey re-registration endpoint and receive a new credential registration challenge
   5. Calling the account deletion endpoint removes the user row and all associated passkeys, sessions, and challenges — a subsequent login attempt with the deleted account's credentials returns 401
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 05-01-PLAN.md — Type contracts (DatabaseAdapter extensions), postgres adapter implementations, test scaffold
+- [ ] 05-02-PLAN.md — Real MPC AddKey signing (STUB-01) and wallet verification fix (BUG-04) in mpc.ts
+- [ ] 05-03-PLAN.md — Transaction-wrapped registration (INFRA-02), wallet/verify fix, re-registration and deletion routes (STUB-02, STUB-03)
 
 ### Phase 6: Scalability, Tech Debt, and Email
 **Goal**: The library works correctly across server restarts and multi-instance deployments; code contains no false type claims, dead code, or avoidable inefficiencies; OAuth recovery passwords are delivered via email
@@ -130,6 +134,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Input Validation | 2/2 | Complete   | 2026-03-14 |
 | 3. Structured Logging | 2/2 | Complete   | 2026-03-14 |
 | 4. HTTP Defenses | 3/3 | Complete   | 2026-03-14 |
-| 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |
+| 5. DB Integrity and Functional Stubs | 0/3 | Not started | - |
 | 6. Scalability, Tech Debt, and Email | 0/TBD | Not started | - |
 | 7. Test Coverage | 0/TBD | Not started | - |
