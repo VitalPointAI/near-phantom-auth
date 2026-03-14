@@ -13,6 +13,7 @@ import type { Logger } from 'pino';
 import { createTransaction, actionCreators } from '@near-js/transactions';
 import { KeyPairSigner } from '@near-js/signers';
 import { PublicKey, KeyPair } from '@near-js/crypto';
+import { checkWalletAccess } from './recovery/wallet.js';
 
 export interface MPCAccount {
   nearAccountId: string;
@@ -590,39 +591,22 @@ export class MPCAccountManager {
   }
 
   /**
-   * Verify that a wallet has recovery access to an account
+   * Verify that a wallet has recovery access to an account by checking the
+   * specific recovery wallet public key via view_access_key RPC.
+   *
+   * Returns false when account has keys but none match the recovery wallet key.
+   *
+   * @param nearAccountId - The user's NEAR implicit account ID
+   * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
    */
   async verifyRecoveryWallet(
     nearAccountId: string,
-    recoveryWalletId: string
+    recoveryWalletPublicKey: string
   ): Promise<boolean> {
     try {
-      const rpcUrl = getRPCUrl(this.networkId);
-
-      const response = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 'check-keys',
-          method: 'query',
-          params: {
-            request_type: 'view_access_key_list',
-            finality: 'final',
-            account_id: nearAccountId,
-          },
-        }),
-      });
-
-      const result = await response.json() as {
-        result?: { keys: Array<{ public_key: string }> };
-      };
-
-      // Check if recovery wallet's key is in the access key list
-      // This requires knowing the public key of the recovery wallet
-      // For now, return true if account exists
-      return !!result.result?.keys?.length;
+      return await checkWalletAccess(nearAccountId, recoveryWalletPublicKey, this.networkId);
     } catch {
+      this.log.error({ nearAccountId }, 'Recovery wallet verification failed');
       return false;
     }
   }
