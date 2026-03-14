@@ -5,7 +5,7 @@
  * Supports Google, GitHub, and X (Twitter) OAuth providers.
  */
 
-import type { DatabaseAdapter, OAuthUser, CreateOAuthUserInput } from '../../types/index.js';
+import type { DatabaseAdapter, OAuthUser, CreateOAuthUserInput, OAuthStateRecord } from '../../types/index.js';
 import { createHash, randomBytes } from 'crypto';
 
 export interface OAuthProviderConfig {
@@ -166,12 +166,19 @@ export function createOAuthManager(
         redirectUri,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       };
-      stateStore.set(state, oauthState);
 
-      // Clean up old states
-      for (const [key, value] of stateStore.entries()) {
-        if (value.expiresAt < new Date()) {
-          stateStore.delete(key);
+      if (db.storeOAuthState) {
+        // DB-backed: durable across server restarts and multiple instances
+        await db.storeOAuthState(oauthState as OAuthStateRecord);
+      } else {
+        // Fallback: in-memory Map (custom adapters without DB state support)
+        stateStore.set(state, oauthState);
+
+        // Clean up expired in-memory states
+        for (const [key, value] of stateStore.entries()) {
+          if (value.expiresAt < new Date()) {
+            stateStore.delete(key);
+          }
         }
       }
 
@@ -358,16 +365,36 @@ export function createOAuthManager(
     },
 
     async validateState(state) {
-      const oauthState = stateStore.get(state);
-      if (!oauthState) {
-        return null;
-      }
-      if (oauthState.expiresAt < new Date()) {
+      if (db.getOAuthState) {
+        // DB-backed: atomic consume — retrieve and delete in separate calls
+        const record = await db.getOAuthState(state);
+        if (!record) return null;
+        // getOAuthState already filters expires_at > NOW(), but double-check for safety
+        if (record.expiresAt < new Date()) {
+          await db.deleteOAuthState?.(state);
+          return null;
+        }
+        // Consume (delete on read) to prevent replay attacks
+        await db.deleteOAuthState?.(state);
+        // Map OAuthStateRecord back to OAuthState (provider cast for type safety)
+        return {
+          provider: record.provider as OAuthState['provider'],
+          state: record.state,
+          codeVerifier: record.codeVerifier,
+          redirectUri: record.redirectUri,
+          expiresAt: record.expiresAt,
+        };
+      } else {
+        // Fallback: in-memory Map for custom adapters
+        const oauthState = stateStore.get(state);
+        if (!oauthState) return null;
+        if (oauthState.expiresAt < new Date()) {
+          stateStore.delete(state);
+          return null;
+        }
         stateStore.delete(state);
-        return null;
+        return oauthState;
       }
-      stateStore.delete(state);
-      return oauthState;
     },
   };
 }
