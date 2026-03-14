@@ -240,7 +240,11 @@ describe('walletLinkBodySchema', () => {
 // ---------------------------------------------------------------------------
 
 const validWalletVerifyBody = {
-  signature: 'base64sig',
+  signature: {
+    signature: 'base64sig',
+    publicKey: 'ed25519:AAAA',
+    message: 'near-anon-auth:link-recovery:1234567890',
+  },
   challenge: 'challenge-string',
   walletAccountId: 'alice.near',
 };
@@ -286,7 +290,11 @@ describe('walletStartBodySchema', () => {
 // ---------------------------------------------------------------------------
 
 const validWalletFinishBody = {
-  signature: 'base64sig',
+  signature: {
+    signature: 'base64sig',
+    publicKey: 'ed25519:AAAA',
+    message: 'near-anon-auth:recover-account:1234567890',
+  },
   challenge: 'challenge-string',
   nearAccountId: 'alice.near',
 };

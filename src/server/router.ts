@@ -641,5 +641,78 @@ export function createRouter(config: RouterConfig): Router {
     });
   }
 
+  // ============================================
+  // Account Management
+  // ============================================
+
+  /**
+   * POST /account/reregister-passkey
+   * Start passkey re-registration for post-recovery users.
+   * STUB-02: Authenticated users can register a new passkey after wallet/IPFS recovery.
+   */
+  router.post('/account/reregister-passkey', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const session = await sessionManager.getSession(req);
+      if (!session) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const user = await db.getUserById(session.userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const { challengeId, options } = await passkeyManager.startRegistration(
+        user.id,
+        user.codename
+      );
+
+      res.json({ challengeId, options });
+    } catch (error) {
+      log.error({ err: error }, 'Passkey re-registration error');
+      res.status(500).json({ error: 'Failed to start re-registration' });
+    }
+  });
+
+  /**
+   * DELETE /account
+   * Delete user account and all associated data.
+   * STUB-03: Explicit deletion order — sessions first (no FK cascade), then recovery
+   * (no FK cascade), then user (passkeys cascade via ON DELETE CASCADE).
+   * Returns 501 if adapter does not implement deleteUser.
+   */
+  router.delete('/account', authLimiter, async (req: Request, res: Response) => {
+    try {
+      const session = await sessionManager.getSession(req);
+      if (!session) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      if (!db.deleteUser) {
+        return res.status(501).json({ error: 'Account deletion not supported by database adapter' });
+      }
+
+      const userId = session.userId;
+
+      // Destroy current session first (invalidates auth cookie immediately),
+      // then delete all remaining sessions for the user (no FK cascade on anon_sessions).
+      await sessionManager.destroySession(req, res);
+      await db.deleteUserSessions(userId);
+
+      // Delete recovery data (no FK cascade on anon_recovery).
+      if (db.deleteRecoveryData) {
+        await db.deleteRecoveryData(userId);
+      }
+
+      // Delete user — passkeys cascade via FK ON DELETE CASCADE.
+      await db.deleteUser(userId);
+
+      res.json({ success: true });
+    } catch (error) {
+      log.error({ err: error }, 'Account deletion error');
+      res.status(500).json({ error: 'Account deletion failed' });
+    }
+  });
+
   return router;
 }
