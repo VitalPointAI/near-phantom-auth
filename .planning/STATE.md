@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-03-14T20:36:44.701Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-14T22:55:52.927Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 17
-  completed_plans: 17
+  total_plans: 21
+  completed_plans: 19
   percent: 100
 ---
 
@@ -66,6 +66,8 @@ Progress: [██████████] 100%
 | Phase 06-scalability-tech-debt-and-email P03 | 224 | 2 tasks | 5 files |
 | Phase 06-scalability-tech-debt-and-email P01 | 7 | 2 tasks | 3 files |
 | Phase 06-scalability-tech-debt-and-email P04 | 8 | 2 tasks | 2 files |
+| Phase 07-test-coverage P01 | 4 | 2 tasks | 2 files |
+| Phase 07-test-coverage P02 | 7 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -120,6 +122,10 @@ Recent decisions affecting current work:
 - [Phase 06-04]: createCleanupScheduler is standalone export, not embedded in AnonAuthInstance — composable pattern
 - [Phase 06-04]: handle.unref() called immediately after setInterval — prevents timer from blocking process exit
 - [Phase 06-04]: cleanExpiredChallenges and cleanExpiredOAuthStates optional-chained with ?? 0 — custom adapters without these methods still work
+- [Phase 07-01]: No mocking needed for crypto-based pure functions — Node crypto is deterministic enough for round-trip tests
+- [Phase 07-01]: Statistical uniqueness check: 50 samples expect >=40 unique (collision space is 50k+ for codenames)
+- [Phase 07-02]: session.test.ts adversarial coverage was already complete — tampered, truncated, and extended cookie cases all verified green without modification
+- [Phase 07-02]: Adversarial unrelated-key case tested by: creating valid sig with keypair A, mocking RPC to return UNKNOWN_ACCESS_KEY error, asserting checkWalletAccess returns false
 
 ### Pending Todos
 
@@ -133,6 +139,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T20:30:58.243Z
-Stopped at: Completed 06-04-PLAN.md
+Last session: 2026-03-14T22:55:52.924Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
