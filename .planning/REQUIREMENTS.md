@@ -13,7 +13,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [ ] **SEC-02**: All auth and recovery endpoints have rate limiting (stricter limits on recovery)
 - [ ] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
 - [x] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
-- [ ] **SEC-05**: All endpoint request bodies validated at runtime with zod schemas
+- [x] **SEC-05**: All endpoint request bodies validated at runtime with zod schemas
 - [ ] **SEC-06**: Sensitive data (treasury keys, derivation paths, MPC public keys) redacted from production logs
 
 ### Bug Fixes
@@ -101,7 +101,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEC-02 | Phase 4 | Pending |
 | SEC-03 | Phase 4 | Pending |
 | SEC-04 | Phase 1 | Complete |
-| SEC-05 | Phase 2 | Pending |
+| SEC-05 | Phase 2 | Complete — 02-01 |
 | SEC-06 | Phase 3 | Pending |
 | BUG-01 | Phase 1 | Complete |
 | BUG-02 | Phase 1 | Complete |

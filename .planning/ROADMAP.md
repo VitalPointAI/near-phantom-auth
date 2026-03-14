@@ -48,7 +48,7 @@ Plans:
   3. All 16 route handlers have a corresponding zod schema; no route destructures `req.body` without prior validation
 **Plans**: 2 plans
 Plans:
-- [ ] 02-01-PLAN.md — Install Zod 4, create 13 request body schemas, validateBody helper, and unit tests
+- [x] 02-01-PLAN.md — Install Zod 4, create 13 request body schemas, validateBody helper, and unit tests
 - [ ] 02-02-PLAN.md — Wire validation into router.ts and oauth/router.ts, replacing manual guards
 
 ### Phase 3: Structured Logging
@@ -120,7 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
-| 2. Input Validation | 0/2 | Planning | - |
+| 2. Input Validation | 1/2 | In progress | - |
 | 3. Structured Logging | 0/TBD | Not started | - |
 | 4. HTTP Defenses | 0/TBD | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |

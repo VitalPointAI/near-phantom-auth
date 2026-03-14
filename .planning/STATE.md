@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-14T13:01:56.084Z"
-last_activity: 2026-03-14 — Roadmap created, all 35 requirements mapped to 7 phases
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-14T13:43:00Z"
+last_activity: 2026-03-14 — Phase 02 Plan 01 complete — Zod schemas and validateBody helper
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 43
+  total_plans: 4
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 1 — Atomic Security Fixes
+**Current focus:** Phase 2 — Input Validation
 
 ## Current Position
 
-Phase: 1 of 7 (Atomic Security Fixes)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-14 — Roadmap created, all 35 requirements mapped to 7 phases
+Phase: 2 of 7 (Input Validation)
+Plan: 1 of TBD in current phase
+Status: In progress — Plan 01 complete, Plan 02 (route wiring) next
+Last activity: 2026-03-14 — Phase 02 Plan 01 complete — Zod schemas and validateBody helper
 
-Progress: [████░░░░░░] 43%
+Progress: [█████░░░░░] 57%
 
 ## Performance Metrics
 
@@ -66,6 +66,8 @@ Recent decisions affecting current work:
 - [Init]: Remove SQLite type instead of implementing adapter (Phase 6)
 - [Init]: Skip auto-recovery for OAuth until email works — BUG-05 deferred to Phase 6 behind EMAIL-01
 - [Init]: zod for runtime validation, no `.strict()` on WebAuthn response fields (Phase 2)
+- [Phase 02 P01]: z.object({}).catchall(z.unknown()) replaces z.record(z.unknown()) for clientExtensionResults — Zod 4.3.6 bug: z.record(z.unknown()) throws TypeError when values are nested objects; catchall is semantically equivalent and works correctly
+- [Phase 02 P01]: WebAuthn .passthrough() on both outer credential and inner response sub-object — confirmed correct approach in schemas.ts
 - [Init]: Make new DatabaseAdapter methods optional with internal fallbacks to avoid hard breaking changes (Phase 5)
 - [Phase 01]: it.todo() used for all test stubs — suite runs green with 0 failures, 16 todos, clean scaffolding for Plans 02 and 03
 - [Phase 01]: warnedNoUpdateSessionExpiry is instance-scoped (inside createSessionManager closure), not module-level — prevents test isolation issues and is semantically correct since different manager instances are independent
@@ -82,10 +84,10 @@ None yet.
 
 - **Phase 5 (MPC signing):** Real borsh AddKey transaction serialization must be validated against NEAR testnet before Phase 5 ships. Capture a real AddKey transaction as a fixture.
 - **Phase 5 (DB interface):** Decide before Phase 5 whether `DatabaseAdapter.transaction()` being optional (no-op fallback) is acceptable, or whether absent transaction support should be a hard runtime error.
-- **Phase 6 (zod version):** Run `npm view zod version` before pinning — Zod 4 may have shipped stable since research cutoff.
+- **Phase 6 (zod version):** RESOLVED — Zod 4.3.6 installed and confirmed stable latest as of 2026-03-14.
 
 ## Session Continuity
 
-Last session: 2026-03-14T12:57:00Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-03-14T13:43:00Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
