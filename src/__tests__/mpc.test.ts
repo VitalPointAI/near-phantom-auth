@@ -7,9 +7,10 @@
  * SEC-04: Derivation salt prevents account ID prediction
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import bs58 from 'bs58';
 import BN from 'bn.js';
+import nacl from 'tweetnacl';
 import { MPCAccountManager } from '../server/mpc.js';
 
 // ============================================
@@ -198,5 +199,92 @@ describe('derivation salt - SEC-04', () => {
     const result2 = await manager2.createAccount('user1');
 
     expect(result1.nearAccountId).not.toBe(result2.nearAccountId);
+  });
+});
+
+// ============================================
+// STUB-01: addRecoveryWallet real MPC signing
+// ============================================
+
+// Generate a real ed25519 keypair for the treasury (once per file)
+const treasuryKeyPair = nacl.sign.keyPair();
+const treasuryPrivateKey = `ed25519:${bs58.encode(Buffer.from(treasuryKeyPair.secretKey))}`;
+
+describe('addRecoveryWallet - STUB-01', () => {
+  beforeEach(() => {
+    // First fetch call (access key nonce query): return nonce + block_hash
+    // Second fetch call (broadcast tx): return transaction hash
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
+      const body = JSON.parse(opts.body as string);
+      if (body.method === 'query') {
+        // Access key nonce query
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            result: { nonce: 100, block_hash: 'GJ2rnFKjZpx4j2QDXdLXMBRbdqr9vEWMcYnL2CrPxU5' },
+          }),
+        });
+      }
+      if (body.method === 'broadcast_tx_commit') {
+        // Broadcast transaction
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            result: { transaction: { hash: '8KHt3ZzJdQ1vK2mXPxJ5nUwR3kYfG6ePnT7oVcBaLs' } },
+          }),
+        });
+      }
+      callCount++;
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns a txHash that does not match /^pending-/', async () => {
+    const manager = new MPCAccountManager({
+      networkId: 'testnet',
+      accountPrefix: 'anon',
+      treasuryAccount: 'treasury.testnet',
+      treasuryPrivateKey,
+    });
+
+    const result = await manager.addRecoveryWallet(
+      'test-account.testnet',
+      `ed25519:${bs58.encode(Buffer.from(nacl.sign.keyPair().publicKey))}`
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.txHash).toBeDefined();
+    expect(result.txHash).not.toMatch(/^pending-/);
+  });
+
+  it('calls NEAR RPC to broadcast the transaction', async () => {
+    const manager = new MPCAccountManager({
+      networkId: 'testnet',
+      accountPrefix: 'anon',
+      treasuryAccount: 'treasury.testnet',
+      treasuryPrivateKey,
+    });
+
+    await manager.addRecoveryWallet(
+      'test-account.testnet',
+      `ed25519:${bs58.encode(Buffer.from(nacl.sign.keyPair().publicKey))}`
+    );
+
+    const fetchMock = vi.mocked(global.fetch);
+    const broadcastCall = fetchMock.mock.calls.find(([, opts]) => {
+      try {
+        const body = JSON.parse((opts as RequestInit).body as string);
+        return body.method === 'broadcast_tx_commit';
+      } catch {
+        return false;
+      }
+    });
+
+    expect(broadcastCall).toBeDefined();
   });
 });
