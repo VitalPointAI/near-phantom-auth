@@ -6,6 +6,7 @@
 
 import { Router, json } from 'express';
 import type { Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { SessionManager } from './session.js';
 import type { PasskeyManager } from './passkey.js';
 import type { MPCAccountManager } from './mpc.js';
@@ -58,6 +59,32 @@ export function createRouter(config: RouterConfig): Router {
     ipfsRecovery,
   } = config;
 
+  // Create rate limiter instances
+  const authRateConfig = config.rateLimiting?.auth ?? {};
+  const recoveryRateConfig = config.rateLimiting?.recovery ?? {};
+
+  const authLimiter = rateLimit({
+    windowMs: authRateConfig.windowMs ?? 15 * 60 * 1000,
+    limit: authRateConfig.limit ?? 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log.warn({ limit: options.limit }, 'auth rate limit exceeded');
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    },
+  });
+
+  const recoveryLimiter = rateLimit({
+    windowMs: recoveryRateConfig.windowMs ?? 60 * 60 * 1000,
+    limit: recoveryRateConfig.limit ?? 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log.warn({ limit: options.limit }, 'recovery rate limit exceeded');
+      res.status(429).json({ error: 'Too many recovery attempts. Please try again later.' });
+    },
+  });
+
   // Parse JSON bodies
   router.use(json());
 
@@ -69,7 +96,7 @@ export function createRouter(config: RouterConfig): Router {
    * POST /register/start
    * Start passkey registration
    */
-  router.post('/register/start', async (req: Request, res: Response) => {
+  router.post('/register/start', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(registerStartBodySchema, req, res);
       if (!body) return;
@@ -119,7 +146,7 @@ export function createRouter(config: RouterConfig): Router {
    * POST /register/finish
    * Complete passkey registration
    */
-  router.post('/register/finish', async (req: Request, res: Response) => {
+  router.post('/register/finish', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(registerFinishBodySchema, req, res);
       if (!body) return;
@@ -187,7 +214,7 @@ export function createRouter(config: RouterConfig): Router {
    * POST /login/start
    * Start passkey authentication
    */
-  router.post('/login/start', async (req: Request, res: Response) => {
+  router.post('/login/start', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(loginStartBodySchema, req, res);
       if (!body) return;
@@ -217,7 +244,7 @@ export function createRouter(config: RouterConfig): Router {
    * POST /login/finish
    * Complete passkey authentication
    */
-  router.post('/login/finish', async (req: Request, res: Response) => {
+  router.post('/login/finish', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(loginFinishBodySchema, req, res);
       if (!body) return;
@@ -259,7 +286,7 @@ export function createRouter(config: RouterConfig): Router {
    * POST /logout
    * End session
    */
-  router.post('/logout', async (req: Request, res: Response) => {
+  router.post('/logout', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(logoutBodySchema, req, res);
       if (!body) return;
@@ -311,7 +338,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/wallet/link
      * Link a NEAR wallet for recovery
      */
-    router.post('/recovery/wallet/link', async (req: Request, res: Response) => {
+    router.post('/recovery/wallet/link', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const body = validateBody(walletLinkBodySchema, req, res);
         if (!body) return;
@@ -348,7 +375,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/wallet/verify
      * Verify wallet signature and complete linking
      */
-    router.post('/recovery/wallet/verify', async (req: Request, res: Response) => {
+    router.post('/recovery/wallet/verify', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const session = await sessionManager.getSession(req);
 
@@ -401,7 +428,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/wallet/start
      * Start wallet-based recovery
      */
-    router.post('/recovery/wallet/start', async (req: Request, res: Response) => {
+    router.post('/recovery/wallet/start', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const body = validateBody(walletStartBodySchema, req, res);
         if (!body) return;
@@ -422,7 +449,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/wallet/finish
      * Complete wallet-based recovery
      */
-    router.post('/recovery/wallet/finish', async (req: Request, res: Response) => {
+    router.post('/recovery/wallet/finish', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const body = validateBody(walletFinishBodySchema, req, res);
         if (!body) return;
@@ -473,7 +500,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/ipfs/setup
      * Create encrypted backup on IPFS
      */
-    router.post('/recovery/ipfs/setup', async (req: Request, res: Response) => {
+    router.post('/recovery/ipfs/setup', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const session = await sessionManager.getSession(req);
 
@@ -535,7 +562,7 @@ export function createRouter(config: RouterConfig): Router {
      * POST /recovery/ipfs/recover
      * Recover using IPFS backup
      */
-    router.post('/recovery/ipfs/recover', async (req: Request, res: Response) => {
+    router.post('/recovery/ipfs/recover', recoveryLimiter, async (req: Request, res: Response) => {
       try {
         const body = validateBody(ipfsRecoverBodySchema, req, res);
         if (!body) return;

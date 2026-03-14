@@ -6,6 +6,7 @@
 
 import { Router, json } from 'express';
 import type { Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
@@ -43,6 +44,19 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     oauthConfig,
     ipfsRecovery,
   } = config;
+
+  // Create rate limiter instance
+  const authRateConfig = config.rateLimiting?.auth ?? {};
+  const authLimiter = rateLimit({
+    windowMs: authRateConfig.windowMs ?? 15 * 60 * 1000,
+    limit: authRateConfig.limit ?? 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log.warn({ limit: options.limit }, 'auth rate limit exceeded');
+      res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    },
+  });
 
   // Create OAuth manager
   const oauthManager = createOAuthManager(
@@ -82,7 +96,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
    * GET /oauth/:provider/start
    * Start OAuth flow for a provider
    */
-  router.get('/:provider/start', async (req: Request, res: Response) => {
+  router.get('/:provider/start', authLimiter, async (req: Request, res: Response) => {
     try {
       const provider = req.params.provider as 'google' | 'github' | 'twitter';
 
@@ -129,7 +143,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
    * POST /oauth/:provider/callback
    * Handle OAuth callback
    */
-  router.post('/:provider/callback', async (req: Request, res: Response) => {
+  router.post('/:provider/callback', authLimiter, async (req: Request, res: Response) => {
     try {
       const body = validateBody(oauthCallbackBodySchema, req, res);
       if (!body) return;
@@ -300,7 +314,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
    * POST /oauth/:provider/link
    * Link additional OAuth provider to existing account
    */
-  router.post('/:provider/link', async (req: Request, res: Response) => {
+  router.post('/:provider/link', authLimiter, async (req: Request, res: Response) => {
     try {
       const session = await sessionManager.getSession(req);
       if (!session) {
