@@ -7,6 +7,8 @@
 import { Router, json } from 'express';
 import type { Request, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import { doubleCsrf } from 'csrf-csrf';
+import cookieParser from 'cookie-parser';
 import type { SessionManager } from './session.js';
 import type { PasskeyManager } from './passkey.js';
 import type { MPCAccountManager } from './mpc.js';
@@ -84,6 +86,33 @@ export function createRouter(config: RouterConfig): Router {
       res.status(429).json({ error: 'Too many recovery attempts. Please try again later.' });
     },
   });
+
+  // CSRF protection (opt-in via config.csrf)
+  if (config.csrf) {
+    const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+      getSecret: () => config.csrf!.secret,
+      getSessionIdentifier: (req) => req.ip ?? '',
+      cookieName: '__Host-csrf',
+      cookieOptions: {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: true,
+        path: '/',
+      },
+      ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+      getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'] as string,
+    });
+
+    router.use(cookieParser());
+    router.use(doubleCsrfProtection);
+
+    // CSRF token endpoint (GET — exempt via ignoredMethods)
+    router.get('/csrf-token', (req: Request, res: Response) => {
+      res.json({ token: generateCsrfToken(req, res) });
+    });
+
+    log.info('CSRF protection enabled');
+  }
 
   // Parse JSON bodies
   router.use(json());

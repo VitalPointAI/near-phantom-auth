@@ -7,6 +7,8 @@
 import { Router, json } from 'express';
 import type { Request, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import { doubleCsrf } from 'csrf-csrf';
+import cookieParser from 'cookie-parser';
 import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
@@ -57,6 +59,33 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
       res.status(429).json({ error: 'Too many requests. Please try again later.' });
     },
   });
+
+  // CSRF protection (opt-in via config.csrf) with OAuth callback exemption
+  if (config.csrf) {
+    const { doubleCsrfProtection } = doubleCsrf({
+      getSecret: () => config.csrf!.secret,
+      getSessionIdentifier: (req) => req.ip ?? '',
+      cookieName: '__Host-csrf',
+      cookieOptions: {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: true,
+        path: '/',
+      },
+      ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+      getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'] as string,
+      // OAuth callback arrives cross-origin from provider; cannot carry CSRF cookie.
+      // OAuth flow uses state parameter validation as its own CSRF defense.
+      skipCsrfProtection: (req) => {
+        return /^\/[^/]+\/callback$/.test(req.path);
+      },
+    });
+
+    router.use(cookieParser());
+    router.use(doubleCsrfProtection);
+
+    log.info('CSRF protection enabled for OAuth router (callback exempt)');
+  }
 
   // Create OAuth manager
   const oauthManager = createOAuthManager(
@@ -145,6 +174,17 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
    */
   router.post('/:provider/callback', authLimiter, async (req: Request, res: Response) => {
     try {
+      // INFRA-05: Detect missing cookie-parser middleware
+      if (req.cookies === undefined) {
+        log.error(
+          'OAuth callback received request without req.cookies. ' +
+          'Mount cookie-parser middleware before the OAuth router: app.use(cookieParser())'
+        );
+        return res.status(500).json({
+          error: 'Server configuration error: cookie-parser middleware is required',
+        });
+      }
+
       const body = validateBody(oauthCallbackBodySchema, req, res);
       if (!body) return;
 
