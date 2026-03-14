@@ -1,6 +1,6 @@
 /**
  * OAuth Router
- * 
+ *
  * API routes for OAuth authentication.
  */
 
@@ -11,6 +11,11 @@ import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
 import type { DatabaseAdapter, OAuthConfig, OAuthProvider } from '../../types/index.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
+import { validateBody } from '../validation/validateBody.js';
+import {
+  oauthCallbackBodySchema,
+  oauthLinkBodySchema,
+} from '../validation/schemas.js';
 
 export interface OAuthRouterConfig {
   db: DatabaseAdapter;
@@ -71,7 +76,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
   router.get('/:provider/start', async (req: Request, res: Response) => {
     try {
       const provider = req.params.provider as 'google' | 'github' | 'twitter';
-      
+
       if (!['google', 'github', 'twitter'].includes(provider)) {
         return res.status(400).json({ error: 'Invalid provider' });
       }
@@ -117,12 +122,11 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
    */
   router.post('/:provider/callback', async (req: Request, res: Response) => {
     try {
-      const provider = req.params.provider as 'google' | 'github' | 'twitter';
-      const { code, state } = req.body;
+      const body = validateBody(oauthCallbackBodySchema, req, res);
+      if (!body) return;
 
-      if (!code || !state) {
-        return res.status(400).json({ error: 'Missing code or state' });
-      }
+      const provider = req.params.provider as 'google' | 'github' | 'twitter';
+      const { code, state } = body;
 
       // Validate state
       const storedState = req.cookies?.oauth_state;
@@ -294,12 +298,11 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      const provider = req.params.provider as 'google' | 'github' | 'twitter';
-      const { code, state, codeVerifier } = req.body;
+      const body = validateBody(oauthLinkBodySchema, req, res);
+      if (!body) return;
 
-      if (!code) {
-        return res.status(400).json({ error: 'Missing code' });
-      }
+      const provider = req.params.provider as 'google' | 'github' | 'twitter';
+      const { code, state, codeVerifier } = body;
 
       // Exchange code for tokens
       const redirectUri = `${oauthConfig.callbackBaseUrl}/${provider}`;
