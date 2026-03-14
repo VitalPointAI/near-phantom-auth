@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-14T18:39:34.959Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-03-14T18:44:50.704Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
   percent: 100
 ---
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 04-http-defenses P03 | 5 | 2 tasks | 4 files |
 | Phase 05-db-integrity-and-functional-stubs P01 | 2 | 2 tasks | 3 files |
 | Phase 05 P02 | 8 | 2 tasks | 1 files |
+| Phase 05-db-integrity-and-functional-stubs P03 | 15 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 05]: buildClientAdapter() throws 'Not available in transaction context' for non-transactional methods — prevents silent query-outside-transaction bugs
 - [Phase 05]: actionCreators destructuring for addKey/fullAccessKey — plan showed direct imports that don't exist; fixed to use actionCreators object which is the actual export from @near-js/transactions
 - [Phase 05]: Treasury key cast to ed25519 template literal for KeyPair.fromString — KeyPairString type requires ed25519:X format; signing authority question deferred to testnet validation
+- [Phase 05-db-integrity-and-functional-stubs]: walletVerifyBodySchema and walletFinishBodySchema: signature is a WalletSignature object (signature/publicKey/message), not a plain string — schema was mismatched to the WalletRecoveryManager interface
+- [Phase 05-db-integrity-and-functional-stubs]: DELETE /account: destroySession before deleteUserSessions to invalidate auth cookie immediately; deleteRecoveryData is conditional on adapter support; returns 501 if deleteUser not implemented
 
 ### Pending Todos
 
@@ -114,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T18:39:34.957Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-14T18:44:50.701Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
