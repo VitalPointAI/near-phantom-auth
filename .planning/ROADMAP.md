@@ -13,7 +13,7 @@ This milestone hardens a published anonymous passkey authentication SDK from fun
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Atomic Security Fixes** - Eliminate timing side-channel, fix session persistence, correct MPC math and transaction format
-- [ ] **Phase 2: Input Validation** - Add zod schemas to all 16 route endpoints; reject malformed requests before they reach handlers
+- [x] **Phase 2: Input Validation** - Add zod schemas to all 16 route endpoints; reject malformed requests before they reach handlers (completed 2026-03-14)
 - [ ] **Phase 3: Structured Logging** - Replace 40+ console statements with injectable pino logger with redaction of sensitive fields
 - [ ] **Phase 4: HTTP Defenses** - Add tiered rate limiting and opt-in CSRF protection inside library-owned routers
 - [ ] **Phase 5: DB Integrity and Functional Stubs** - Wrap registration in a database transaction; implement real MPC signing and missing endpoints
@@ -120,7 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
-| 2. Input Validation | 1/2 | In progress | - |
+| 2. Input Validation | 2/2 | Complete   | 2026-03-14 |
 | 3. Structured Logging | 0/TBD | Not started | - |
 | 4. HTTP Defenses | 0/TBD | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |

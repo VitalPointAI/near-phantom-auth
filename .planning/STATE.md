@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
-status: planning
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-14T13:43:00Z"
-last_activity: 2026-03-14 — Phase 02 Plan 01 complete — Zod schemas and validateBody helper
+status: executing
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-14T13:50:11.476Z"
+last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring, SEC-05 satisfied
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
   percent: 57
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 2 of 7 (Input Validation)
-Plan: 1 of TBD in current phase
-Status: In progress — Plan 01 complete, Plan 02 (route wiring) next
-Last activity: 2026-03-14 — Phase 02 Plan 01 complete — Zod schemas and validateBody helper
+Plan: 2 of 2 in current phase — COMPLETE
+Status: Phase 02 complete — all POST routes validated with Zod schemas
+Last activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 
-Progress: [█████░░░░░] 57%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [█████░░░░░] 57%
 | Phase 01 P01 | 6 | 2 tasks | 7 files |
 | Phase 01 P02 | 3 | 2 tasks | 3 files |
 | Phase 01 P03 | 4 | 2 tasks | 3 files |
+| Phase 02 P02 | 7 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase 01 P03]: Static bs58 import replaces dynamic import; removes bs58.default accessor throughout mpc.ts
 - [Phase 01 P03]: BN-based yoctoNEAR conversion: split decimal string, reconstruct integer, use BN for canonical form — honors locked BN decision while handling bn.js lack of decimal string support
 - [Phase 01 P03]: derivationSalt absent produces identical seed 'implicit-{userId}' as original code for backward compatibility
+- [Phase 02]: Empty-body POST routes use z.object({}) schema — rejects non-object bodies while accepting extra fields
+- [Phase 02]: Auth-before-body ordering preserved in walletVerify, ipfsSetup, oauthLink — session check precedes validateBody call
 
 ### Pending Todos
 
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T13:43:00Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-14T13:50:11.474Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
