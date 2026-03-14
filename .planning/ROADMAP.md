@@ -126,7 +126,12 @@ Plans:
   3. Integration tests cover the IPFS recovery flow and the wallet recovery flow; both pass
   4. Adversarial test cases pass: a tampered session cookie returns 401, an expired challenge returns 400, a truncated session cookie is handled without throwing, and a NEAR account with an unrelated key returns false from wallet verification
   5. No test asserts a stub return value — tests for `addRecoveryWallet` assert the txHash does NOT match `/^pending-/`
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 07-01-PLAN.md — Pure function unit tests: codename (TEST-06) and IPFS encrypt/decrypt (TEST-04)
+- [ ] 07-02-PLAN.md — Wallet recovery unit tests (TEST-05) and session adversarial verification (TEST-01)
+- [ ] 07-03-PLAN.md — Passkey unit tests (TEST-02), MPC addRecoveryWallet + db-integrity stubs (TEST-03)
+- [ ] 07-04-PLAN.md — Integration tests: registration/auth flows (TEST-07) and recovery flows (TEST-08)
 
 ## Progress
 
@@ -141,4 +146,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. HTTP Defenses | 3/3 | Complete   | 2026-03-14 |
 | 5. DB Integrity and Functional Stubs | 3/3 | Complete   | 2026-03-14 |
 | 6. Scalability, Tech Debt, and Email | 4/4 | Complete   | 2026-03-14 |
-| 7. Test Coverage | 0/TBD | Not started | - |
+| 7. Test Coverage | 0/4 | Not started | - |
