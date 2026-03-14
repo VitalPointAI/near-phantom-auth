@@ -12,7 +12,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [ ] **SEC-01**: Session signature verification uses constant-time comparison (`crypto.timingSafeEqual`)
 - [ ] **SEC-02**: All auth and recovery endpoints have rate limiting (stricter limits on recovery)
 - [ ] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
-- [ ] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
+- [x] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
 - [ ] **SEC-05**: All endpoint request bodies validated at runtime with zod schemas
 - [ ] **SEC-06**: Sensitive data (treasury keys, derivation paths, MPC public keys) redacted from production logs
 
@@ -20,7 +20,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 - [ ] **BUG-01**: NEAR amount conversion uses BigInt-based math instead of floating-point
 - [ ] **BUG-02**: Signed transaction format includes public key in signature wrapper
-- [ ] **BUG-03**: Session refresh updates `expiresAt` in database (not just cookie)
+- [x] **BUG-03**: Session refresh updates `expiresAt` in database (not just cookie)
 - [ ] **BUG-04**: `verifyRecoveryWallet()` checks specific wallet public key against access key list
 - [ ] **BUG-05**: OAuth recovery password either delivered to user via email or auto-recovery skipped until email works
 
@@ -100,12 +100,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEC-01 | Phase 1 | Pending |
 | SEC-02 | Phase 4 | Pending |
 | SEC-03 | Phase 4 | Pending |
-| SEC-04 | Phase 1 | Pending |
+| SEC-04 | Phase 1 | Complete |
 | SEC-05 | Phase 2 | Pending |
 | SEC-06 | Phase 3 | Pending |
 | BUG-01 | Phase 1 | Pending |
 | BUG-02 | Phase 1 | Pending |
-| BUG-03 | Phase 1 | Pending |
+| BUG-03 | Phase 1 | Complete |
 | BUG-04 | Phase 5 | Pending |
 | BUG-05 | Phase 6 | Pending |
 | STUB-01 | Phase 5 | Pending |
