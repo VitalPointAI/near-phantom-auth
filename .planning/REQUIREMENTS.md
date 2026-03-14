@@ -21,19 +21,19 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [x] **BUG-01**: NEAR amount conversion uses BigInt-based math instead of floating-point
 - [x] **BUG-02**: Signed transaction format includes public key in signature wrapper
 - [x] **BUG-03**: Session refresh updates `expiresAt` in database (not just cookie)
-- [ ] **BUG-04**: `verifyRecoveryWallet()` checks specific wallet public key against access key list
+- [x] **BUG-04**: `verifyRecoveryWallet()` checks specific wallet public key against access key list
 - [ ] **BUG-05**: OAuth recovery password either delivered to user via email or auto-recovery skipped until email works
 
 ### Stubs & Incomplete
 
-- [ ] **STUB-01**: `addRecoveryWallet()` implements real MPC signing for AddKey transaction
-- [ ] **STUB-02**: Passkey re-registration endpoint exists for post-recovery users
-- [ ] **STUB-03**: Account deletion endpoint removes user and all associated data
+- [x] **STUB-01**: `addRecoveryWallet()` implements real MPC signing for AddKey transaction
+- [x] **STUB-02**: Passkey re-registration endpoint exists for post-recovery users
+- [x] **STUB-03**: Account deletion endpoint removes user and all associated data
 
 ### Infrastructure
 
 - [x] **INFRA-01**: Structured logging replaces all console.log/error statements (pino or similar)
-- [ ] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
+- [x] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
 - [ ] **INFRA-03**: OAuth state stored in database instead of in-memory Map
 - [ ] **INFRA-04**: Automatic expired session and challenge cleanup mechanism
 - [x] **INFRA-05**: Explicit cookie-parser dependency check in OAuth callback
@@ -106,13 +106,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | BUG-01 | Phase 1 | Complete |
 | BUG-02 | Phase 1 | Complete |
 | BUG-03 | Phase 1 | Complete |
-| BUG-04 | Phase 5 | Pending |
+| BUG-04 | Phase 5 | Complete |
 | BUG-05 | Phase 6 | Pending |
-| STUB-01 | Phase 5 | Pending |
-| STUB-02 | Phase 5 | Pending |
-| STUB-03 | Phase 5 | Pending |
+| STUB-01 | Phase 5 | Complete |
+| STUB-02 | Phase 5 | Complete |
+| STUB-03 | Phase 5 | Complete |
 | INFRA-01 | Phase 3 | Complete |
-| INFRA-02 | Phase 5 | Pending |
+| INFRA-02 | Phase 5 | Complete |
 | INFRA-03 | Phase 6 | Pending |
 | INFRA-04 | Phase 6 | Pending |
 | INFRA-05 | Phase 4 | Complete |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-14T16:50:07.355Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-14T18:32:31.492Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 13
+  completed_plans: 11
   percent: 100
 ---
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 | Phase 04-http-defenses P01 | 8 | 2 tasks | 9 files |
 | Phase 04-http-defenses P02 | 5 | 2 tasks | 4 files |
 | Phase 04-http-defenses P03 | 5 | 2 tasks | 4 files |
+| Phase 05-db-integrity-and-functional-stubs P01 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 04-http-defenses]: getCsrfTokenFromRequest replaces getTokenFromRequest; generateCsrfToken replaces generateToken; getSessionIdentifier uses req.ip (csrf-csrf v4 renamed API)
 - [Phase 04-http-defenses]: skipCsrfProtection regex is ^\/[^/]+\/callback$ — req.path is relative to sub-router mount point
 - [Phase 04-http-defenses]: INFRA-05 guard fires regardless of CSRF setting — consumer may disable CSRF but also forget cookie-parser
+- [Phase 05]: Make new DatabaseAdapter methods optional with ? — no breaking changes for custom adapters that don't implement them
+- [Phase 05]: buildClientAdapter() throws 'Not available in transaction context' for non-transactional methods — prevents silent query-outside-transaction bugs
 
 ### Pending Todos
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T16:46:31.690Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-14T18:32:31.489Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
