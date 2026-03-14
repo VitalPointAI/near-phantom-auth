@@ -199,30 +199,38 @@ export function createRouter(config: RouterConfig): Router {
       // Create NEAR account via MPC
       const mpcAccount = await mpcManager.createAccount(tempUserId);
 
-      // Create user
-      const user = await db.createUser({
-        codename,
-        nearAccountId: mpcAccount.nearAccountId,
-        mpcPublicKey: mpcAccount.mpcPublicKey,
-        derivationPath: mpcAccount.derivationPath,
-      });
+      // INFRA-02: Wrap DB operations in a transaction when available.
+      // If db.transaction is not implemented, fall back to sequential calls
+      // (existing behavior — no atomicity guarantee without transaction support).
+      const doRegistration = async (adapter: DatabaseAdapter) => {
+        const user = await adapter.createUser({
+          codename,
+          nearAccountId: mpcAccount.nearAccountId,
+          mpcPublicKey: mpcAccount.mpcPublicKey,
+          derivationPath: mpcAccount.derivationPath,
+        });
 
-      // Store the passkey credential linked to the new user
-      await db.createPasskey({
-        credentialId: passkeyData.credentialId,
-        userId: user.id,
-        publicKey: passkeyData.publicKey,
-        counter: passkeyData.counter,
-        deviceType: passkeyData.deviceType,
-        backedUp: passkeyData.backedUp,
-        transports: passkeyData.transports,
-      });
+        await adapter.createPasskey({
+          credentialId: passkeyData.credentialId,
+          userId: user.id,
+          publicKey: passkeyData.publicKey,
+          counter: passkeyData.counter,
+          deviceType: passkeyData.deviceType,
+          backedUp: passkeyData.backedUp,
+          transports: passkeyData.transports,
+        });
 
-      // Create session
-      const session = await sessionManager.createSession(user.id, res, {
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
+        const session = await sessionManager.createSession(user.id, res, {
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+
+        return { user, session };
+      };
+
+      const { user } = db.transaction
+        ? await db.transaction(doRegistration)
+        : await doRegistration(db);
 
       res.json({
         success: true,
@@ -432,14 +440,16 @@ export function createRouter(config: RouterConfig): Router {
           return res.status(404).json({ error: 'User not found' });
         }
 
-        // Add wallet as access key on-chain (no DB storage)
-        await mpcManager.addRecoveryWallet(user.nearAccountId, walletAccountId);
+        // BUG-04: Add wallet as access key on-chain using the wallet's public key
+        // (not the account name — the public key is what goes on-chain as an access key)
+        await mpcManager.addRecoveryWallet(user.nearAccountId, signature.publicKey);
 
-        // Store reference for our records (just the fact that wallet recovery is enabled)
+        // BUG-04: Store the wallet's public key for verifyRecoveryWallet chain
+        // (previously stored 'enabled' which broke the verification chain)
         await db.storeRecoveryData({
           userId: user.id,
           type: 'wallet',
-          reference: 'enabled', // We don't store the wallet ID!
+          reference: signature.publicKey,
           createdAt: new Date(),
         });
 

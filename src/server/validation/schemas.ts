@@ -112,9 +112,16 @@ export const walletLinkBodySchema = z.object({});
 /**
  * POST /recovery/wallet/verify
  * Wallet signature verification to complete linking.
+ *
+ * `signature` is a WalletSignature object — not a plain string.
+ * The `publicKey` field is stored in anon_recovery.reference (BUG-04).
  */
 export const walletVerifyBodySchema = z.object({
-  signature: z.string().min(1),
+  signature: z.object({
+    signature: z.string().min(1),
+    publicKey: z.string().min(1),
+    message: z.string().min(1),
+  }),
   challenge: z.string().min(1),
   walletAccountId: z.string().min(1),
 });
@@ -128,9 +135,15 @@ export const walletStartBodySchema = z.object({});
 /**
  * POST /recovery/wallet/finish
  * Wallet signature verification to complete recovery and create session.
+ *
+ * `signature` is a WalletSignature object — same structure as walletVerifyBodySchema.
  */
 export const walletFinishBodySchema = z.object({
-  signature: z.string().min(1),
+  signature: z.object({
+    signature: z.string().min(1),
+    publicKey: z.string().min(1),
+    message: z.string().min(1),
+  }),
   challenge: z.string().min(1),
   nearAccountId: z.string().min(1),
 });
