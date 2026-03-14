@@ -222,16 +222,18 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
 }
 
 // Re-export types and utilities
-export type { 
-  AnonAuthConfig, 
-  DatabaseAdapter, 
-  AnonUser, 
+export type {
+  AnonAuthConfig,
+  DatabaseAdapter,
+  AnonUser,
   OAuthUser,
   User,
   UserType,
   OAuthProvider,
   OAuthConfig,
-  Session 
+  Session,
+  RateLimitConfig,
+  CsrfConfig
 } from '../types/index.js';
 export type { SessionManager, SessionConfig } from './session.js';
 export type { PasskeyManager, PasskeyConfig } from './passkey.js';

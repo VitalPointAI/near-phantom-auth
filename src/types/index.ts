@@ -5,6 +5,32 @@
 import type pino from 'pino';
 
 // ============================================
+// HTTP Defense Configuration
+// ============================================
+
+export interface RateLimitConfig {
+  /** Auth endpoint rate limit config (login, register, logout, OAuth) */
+  auth?: {
+    /** Window duration in ms (default: 15 * 60 * 1000 = 15 min) */
+    windowMs?: number;
+    /** Max requests per window per IP (default: 20) */
+    limit?: number;
+  };
+  /** Recovery endpoint rate limit config (stricter than auth) */
+  recovery?: {
+    /** Window duration in ms (default: 60 * 60 * 1000 = 1 hour) */
+    windowMs?: number;
+    /** Max requests per window per IP (default: 5) */
+    limit?: number;
+  };
+}
+
+export interface CsrfConfig {
+  /** Secret for HMAC token signing. Must NOT be the same as sessionSecret. */
+  secret: string;
+}
+
+// ============================================
 // Configuration
 // ============================================
 
@@ -48,6 +74,12 @@ export interface AnonAuthConfig {
 
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
   logger?: pino.Logger;
+
+  /** Optional rate limiting configuration. Applied per-route with sensible defaults. */
+  rateLimiting?: RateLimitConfig;
+
+  /** Optional CSRF protection (Double Submit Cookie). Disabled by default. */
+  csrf?: CsrfConfig;
 }
 
 export interface MPCAccountConfig {
