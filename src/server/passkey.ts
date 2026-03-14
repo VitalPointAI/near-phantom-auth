@@ -19,6 +19,8 @@ import type {
   VerifiedAuthenticationResponse,
 } from '@simplewebauthn/server';
 import { randomUUID } from 'crypto';
+import pino from 'pino';
+import type { Logger } from 'pino';
 import type {
   DatabaseAdapter,
   Challenge,
@@ -40,6 +42,8 @@ export interface PasskeyConfig {
   origin: string;
   /** Challenge timeout in ms (default: 60000) */
   challengeTimeoutMs?: number;
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export interface PasskeyManager {
@@ -91,6 +95,7 @@ export function createPasskeyManager(
   db: DatabaseAdapter,
   config: PasskeyConfig
 ): PasskeyManager {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'passkey' });
   const challengeTimeoutMs = config.challengeTimeoutMs || 60000;
 
   return {

@@ -11,6 +11,8 @@ import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
 import type { DatabaseAdapter, OAuthConfig, OAuthProvider } from '../../types/index.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
+import pino from 'pino';
+import type { Logger } from 'pino';
 import { validateBody } from '../validation/validateBody.js';
 import {
   oauthCallbackBodySchema,
@@ -23,9 +25,12 @@ export interface OAuthRouterConfig {
   mpcManager: MPCAccountManager;
   oauthConfig: OAuthConfig;
   ipfsRecovery?: IPFSRecoveryManager;
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export function createOAuthRouter(config: OAuthRouterConfig): Router {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'oauth' });
   const router = Router();
   const {
     db,

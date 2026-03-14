@@ -8,6 +8,8 @@
 import { createHash, randomBytes } from 'crypto';
 import bs58 from 'bs58';
 import BN from 'bn.js';
+import pino from 'pino';
+import type { Logger } from 'pino';
 
 export interface MPCAccount {
   nearAccountId: string;
@@ -23,6 +25,8 @@ export interface MPCConfig {
   treasuryPrivateKey?: string;
   fundingAmount?: string; // in NEAR, default 0.01
   derivationSalt?: string;
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 /**
@@ -365,6 +369,7 @@ export class MPCAccountManager {
   private treasuryPrivateKey?: string;
   private fundingAmount: string;
   private derivationSalt?: string;
+  private log: Logger;
 
   constructor(config: MPCConfig) {
     this.networkId = config.networkId;
@@ -374,6 +379,7 @@ export class MPCAccountManager {
     this.treasuryPrivateKey = config.treasuryPrivateKey;
     this.fundingAmount = config.fundingAmount || '0.01';
     this.derivationSalt = config.derivationSalt;
+    this.log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'mpc' });
   }
 
   /**

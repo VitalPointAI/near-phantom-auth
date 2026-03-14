@@ -12,6 +12,8 @@
 
 import { randomBytes, createCipheriv, createDecipheriv, scrypt } from 'crypto';
 import { promisify } from 'util';
+import pino from 'pino';
+import type { Logger } from 'pino';
 
 const scryptAsync = promisify(scrypt);
 
@@ -27,6 +29,8 @@ export interface IPFSRecoveryConfig {
   customPin?: (data: Uint8Array) => Promise<string>;
   /** Custom fetch function */
   customFetch?: (cid: string) => Promise<Uint8Array>;
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export interface EncryptedRecoveryData {
@@ -276,6 +280,7 @@ export interface IPFSRecoveryManager {
 export function createIPFSRecoveryManager(
   config: IPFSRecoveryConfig
 ): IPFSRecoveryManager {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'ipfs-recovery' });
   const MIN_PASSWORD_LENGTH = 12;
 
   async function pinData(data: Uint8Array): Promise<string> {

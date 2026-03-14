@@ -8,6 +8,8 @@
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import type { Response, Request } from 'express';
 import type { Session, CreateSessionInput, DatabaseAdapter } from '../types/index.js';
+import pino from 'pino';
+import type { Logger } from 'pino';
 
 const SESSION_COOKIE_NAME = 'anon_session';
 const DEFAULT_SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -27,6 +29,8 @@ export interface SessionConfig {
   secure?: boolean;
   /** SameSite setting (default: strict) */
   sameSite?: 'strict' | 'lax' | 'none';
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export interface SessionManager {
@@ -99,6 +103,7 @@ export function createSessionManager(
   db: DatabaseAdapter,
   config: SessionConfig
 ): SessionManager {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'session' });
   const cookieName = config.cookieName || SESSION_COOKIE_NAME;
   let warnedNoUpdateSessionExpiry = false;
   const durationMs = config.durationMs || DEFAULT_SESSION_DURATION_MS;

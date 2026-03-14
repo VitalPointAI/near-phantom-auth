@@ -7,6 +7,8 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { SessionManager } from './session.js';
 import type { DatabaseAdapter, AnonUser } from '../types/index.js';
+import pino from 'pino';
+import type { Logger } from 'pino';
 
 /**
  * Create authentication middleware
@@ -15,8 +17,10 @@ import type { DatabaseAdapter, AnonUser } from '../types/index.js';
  */
 export function createAuthMiddleware(
   sessionManager: SessionManager,
-  db: DatabaseAdapter
+  db: DatabaseAdapter,
+  logger?: Logger
 ): RequestHandler {
+  const log = (logger ?? pino({ level: 'silent' })).child({ module: 'middleware' });
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const session = await sessionManager.getSession(req);
@@ -48,8 +52,10 @@ export function createAuthMiddleware(
  */
 export function createRequireAuth(
   sessionManager: SessionManager,
-  db: DatabaseAdapter
+  db: DatabaseAdapter,
+  logger?: Logger
 ): RequestHandler {
+  const log = (logger ?? pino({ level: 'silent' })).child({ module: 'middleware' });
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const session = await sessionManager.getSession(req);

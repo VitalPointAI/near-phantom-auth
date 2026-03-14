@@ -12,6 +12,8 @@ import type { MPCAccountManager } from './mpc.js';
 import type { WalletRecoveryManager } from './recovery/wallet.js';
 import type { IPFSRecoveryManager } from './recovery/ipfs.js';
 import type { DatabaseAdapter, CodenameConfig } from '../types/index.js';
+import pino from 'pino';
+import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
 import { validateBody } from './validation/validateBody.js';
 import {
@@ -36,9 +38,12 @@ export interface RouterConfig {
   walletRecovery?: WalletRecoveryManager;
   ipfsRecovery?: IPFSRecoveryManager;
   codename?: CodenameConfig;
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export function createRouter(config: RouterConfig): Router {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'router' });
   const router = Router();
   const {
     db,

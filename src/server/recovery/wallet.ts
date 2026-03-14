@@ -8,9 +8,13 @@
 import { createHash } from 'crypto';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import pino from 'pino';
+import type { Logger } from 'pino';
 
 export interface WalletRecoveryConfig {
   nearNetwork: 'testnet' | 'mainnet';
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: Logger;
 }
 
 export interface WalletSignature {
@@ -142,6 +146,7 @@ export interface WalletRecoveryManager {
 export function createWalletRecoveryManager(
   config: WalletRecoveryConfig
 ): WalletRecoveryManager {
+  const log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'wallet-recovery' });
   const CHALLENGE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   return {

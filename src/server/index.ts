@@ -33,6 +33,7 @@
 
 import type { Router, RequestHandler } from 'express';
 import type { AnonAuthConfig, DatabaseAdapter } from '../types/index.js';
+import pino from 'pino';
 import { createPostgresAdapter } from './db/adapters/postgres.js';
 import { createSessionManager, type SessionManager } from './session.js';
 import { createPasskeyManager, type PasskeyManager } from './passkey.js';
@@ -86,6 +87,9 @@ export interface AnonAuthInstance {
  * Create anonymous authentication instance
  */
 export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
+  // Create logger: use provided logger or silent no-op default
+  const logger = config.logger ?? pino({ level: 'silent' });
+
   // Create database adapter
   let db: DatabaseAdapter;
   
@@ -111,6 +115,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   const sessionManager = createSessionManager(db, {
     secret: config.sessionSecret,
     durationMs: config.sessionDurationMs,
+    logger,
   });
 
   // Create passkey manager
@@ -124,6 +129,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     rpName: rpConfig.name,
     rpId: rpConfig.id,
     origin: rpConfig.origin,
+    logger,
   });
 
   // Create MPC manager
@@ -134,6 +140,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
     fundingAmount: config.mpc?.fundingAmount,
     derivationSalt: config.mpc?.derivationSalt,
+    logger,
   });
 
   // Create recovery managers
@@ -143,11 +150,15 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   if (config.recovery?.wallet) {
     walletRecovery = createWalletRecoveryManager({
       nearNetwork: config.nearNetwork,
+      logger,
     });
   }
 
   if (config.recovery?.ipfs) {
-    ipfsRecovery = createIPFSRecoveryManager(config.recovery.ipfs);
+    ipfsRecovery = createIPFSRecoveryManager({
+      ...config.recovery.ipfs,
+      logger,
+    });
   }
 
   // Create OAuth manager and router
@@ -170,12 +181,13 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       mpcManager,
       oauthConfig: config.oauth,
       ipfsRecovery,
+      logger,
     });
   }
 
   // Create middleware
-  const middleware = createAuthMiddleware(sessionManager, db);
-  const requireAuth = createRequireAuth(sessionManager, db);
+  const middleware = createAuthMiddleware(sessionManager, db, logger);
+  const requireAuth = createRequireAuth(sessionManager, db, logger);
 
   // Create router (passkey auth)
   const router = createRouter({
@@ -186,6 +198,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     walletRecovery,
     ipfsRecovery,
     codename: config.codename,
+    logger,
   });
 
   return {

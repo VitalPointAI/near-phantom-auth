@@ -2,6 +2,8 @@
  * Core types for near-anon-auth
  */
 
+import type pino from 'pino';
+
 // ============================================
 // Configuration
 // ============================================
@@ -43,6 +45,9 @@ export interface AnonAuthConfig {
 
   /** Server-side secret salt for NEAR account derivation. Recommended for production to prevent account ID prediction. */
   derivationSalt?: string;
+
+  /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+  logger?: pino.Logger;
 }
 
 export interface MPCAccountConfig {
