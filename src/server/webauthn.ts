@@ -49,6 +49,10 @@ import type {
   AuthenticationResponseJSON,
   AuthenticatorTransport,
 } from '../types/index.js';
+import pino from 'pino';
+
+// Module-level silent logger — errors are still re-thrown, so consumers see them
+const log = pino({ level: 'silent' }).child({ module: 'webauthn' });
 
 // ============================================
 // Types
@@ -257,7 +261,7 @@ export async function verifyRegistration(
       },
     };
   } catch (error) {
-    console.error('[WebAuthn] Registration verification error:', error);
+    log.error({ err: error }, 'Registration verification error');
     return {
       verified: false,
       error: error instanceof Error ? error.message : 'Verification failed',
@@ -334,7 +338,7 @@ export async function verifyAuthentication(
       newCounter: verification.authenticationInfo.newCounter,
     };
   } catch (error) {
-    console.error('[WebAuthn] Authentication verification error:', error);
+    log.error({ err: error }, 'Authentication verification error');
     return {
       verified: false,
       error: error instanceof Error ? error.message : 'Verification failed',

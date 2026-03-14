@@ -112,7 +112,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
 
       return res.json({ url, state });
     } catch (error) {
-      console.error('[OAuth] Start error:', error);
+      log.error({ err: error }, 'OAuth start error');
       return res.status(500).json({ error: 'Failed to start OAuth flow' });
     }
   });
@@ -258,9 +258,9 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
           });
 
           // TODO: Send recovery info to user's email
-          console.log('[OAuth] Recovery backup created for new user:', cid);
+          log.info({ cid }, 'Recovery backup created for new user');
         } catch (error) {
-          console.error('[OAuth] Failed to create recovery backup:', error);
+          log.error({ err: error }, 'Failed to create recovery backup');
         }
       }
 
@@ -283,7 +283,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         isNewUser: true,
       });
     } catch (error) {
-      console.error('[OAuth] Callback error:', error);
+      log.error({ err: error }, 'OAuth callback error');
       return res.status(500).json({ error: 'OAuth authentication failed' });
     }
   });
@@ -339,7 +339,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         message: `${provider} account linked successfully`,
       });
     } catch (error) {
-      console.error('[OAuth] Link error:', error);
+      log.error({ err: error }, 'OAuth link error');
       return res.status(500).json({ error: 'Failed to link provider' });
     }
   });

@@ -354,7 +354,7 @@ export function createIPFSRecoveryManager(
       // Pin to IPFS
       const cid = await pinData(data);
       
-      console.log(`[IPFS] Recovery backup created: ${cid} (${config.pinningService})`);
+      log.info({ cid, pinningService: config.pinningService }, 'Recovery backup created');
       
       return { cid };
     },

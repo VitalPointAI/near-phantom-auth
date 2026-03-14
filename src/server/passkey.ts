@@ -170,7 +170,7 @@ export function createPasskeyManager(
           expectedRPID: config.rpId,
         } as VerifyRegistrationResponseOpts);
       } catch (error) {
-        console.error('[Passkey] Registration verification failed:', error);
+        log.error({ err: error }, 'Registration verification failed');
         await db.deleteChallenge(challengeId);
         return { verified: false };
       }
@@ -283,7 +283,7 @@ export function createPasskeyManager(
           },
         } as VerifyAuthenticationResponseOpts);
       } catch (error) {
-        console.error('[Passkey] Authentication verification failed:', error);
+        log.error({ err: error }, 'Authentication verification failed');
         await db.deleteChallenge(challengeId);
         return { verified: false };
       }

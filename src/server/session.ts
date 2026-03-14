@@ -205,9 +205,7 @@ export function createSessionManager(
         if (db.updateSessionExpiry) {
           await db.updateSessionExpiry(session.id, newExpiresAt);
         } else if (!warnedNoUpdateSessionExpiry) {
-          console.warn(
-            '[near-phantom-auth] Session refresh is cookie-only — implement updateSessionExpiry on your adapter for full persistence.'
-          );
+          log.warn('Session refresh is cookie-only — implement updateSessionExpiry on your adapter for full persistence.');
           warnedNoUpdateSessionExpiry = true;
         }
 

@@ -106,7 +106,7 @@ export function createRouter(config: RouterConfig): Router {
         tempUserId,
       });
     } catch (error) {
-      console.error('[AnonAuth] Registration start error:', error);
+      log.error({ err: error }, 'Registration start error');
       res.status(500).json({ error: 'Registration failed' });
     }
   });
@@ -170,7 +170,7 @@ export function createRouter(config: RouterConfig): Router {
         nearAccountId: user.nearAccountId,
       });
     } catch (error) {
-      console.error('[AnonAuth] Registration finish error:', error);
+      log.error({ err: error }, 'Registration finish error');
       res.status(500).json({ error: 'Registration failed' });
     }
   });
@@ -204,7 +204,7 @@ export function createRouter(config: RouterConfig): Router {
 
       res.json({ challengeId, options });
     } catch (error) {
-      console.error('[AnonAuth] Login start error:', error);
+      log.error({ err: error }, 'Login start error');
       res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -246,7 +246,7 @@ export function createRouter(config: RouterConfig): Router {
         codename: user.codename,
       });
     } catch (error) {
-      console.error('[AnonAuth] Login finish error:', error);
+      log.error({ err: error }, 'Login finish error');
       res.status(500).json({ error: 'Authentication failed' });
     }
   });
@@ -263,7 +263,7 @@ export function createRouter(config: RouterConfig): Router {
       await sessionManager.destroySession(req, res);
       res.json({ success: true });
     } catch (error) {
-      console.error('[AnonAuth] Logout error:', error);
+      log.error({ err: error }, 'Logout error');
       res.status(500).json({ error: 'Logout failed' });
     }
   });
@@ -293,7 +293,7 @@ export function createRouter(config: RouterConfig): Router {
         expiresAt: session.expiresAt,
       });
     } catch (error) {
-      console.error('[AnonAuth] Session check error:', error);
+      log.error({ err: error }, 'Session check error');
       res.status(500).json({ error: 'Session check failed' });
     }
   });
@@ -335,7 +335,7 @@ export function createRouter(config: RouterConfig): Router {
           expiresAt: expiresAt.toISOString(),
         });
       } catch (error) {
-        console.error('[AnonAuth] Wallet link error:', error);
+        log.error({ err: error }, 'Wallet link error');
         res.status(500).json({ error: 'Failed to initiate wallet link' });
       }
     });
@@ -388,7 +388,7 @@ export function createRouter(config: RouterConfig): Router {
           message: 'Wallet linked for recovery. The link is stored on-chain, not in our database.',
         });
       } catch (error) {
-        console.error('[AnonAuth] Wallet verify error:', error);
+        log.error({ err: error }, 'Wallet verify error');
         res.status(500).json({ error: 'Failed to verify wallet' });
       }
     });
@@ -409,7 +409,7 @@ export function createRouter(config: RouterConfig): Router {
           expiresAt: expiresAt.toISOString(),
         });
       } catch (error) {
-        console.error('[AnonAuth] Wallet recovery start error:', error);
+        log.error({ err: error }, 'Wallet recovery start error');
         res.status(500).json({ error: 'Failed to start recovery' });
       }
     });
@@ -454,7 +454,7 @@ export function createRouter(config: RouterConfig): Router {
           message: 'Recovery successful. You can now register a new passkey.',
         });
       } catch (error) {
-        console.error('[AnonAuth] Wallet recovery finish error:', error);
+        log.error({ err: error }, 'Wallet recovery finish error');
         res.status(500).json({ error: 'Recovery failed' });
       }
     });
@@ -522,7 +522,7 @@ export function createRouter(config: RouterConfig): Router {
           message: 'Backup created. Save this CID with your password - you need both to recover.',
         });
       } catch (error) {
-        console.error('[AnonAuth] IPFS setup error:', error);
+        log.error({ err: error }, 'IPFS setup error');
         res.status(500).json({ error: 'Failed to create backup' });
       }
     });
@@ -565,7 +565,7 @@ export function createRouter(config: RouterConfig): Router {
           message: 'Recovery successful. You can now register a new passkey.',
         });
       } catch (error) {
-        console.error('[AnonAuth] IPFS recovery error:', error);
+        log.error({ err: error }, 'IPFS recovery error');
         res.status(500).json({ error: 'Recovery failed' });
       }
     });

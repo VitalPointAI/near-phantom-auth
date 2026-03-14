@@ -131,7 +131,8 @@ async function fundAccountFromTreasury(
   treasuryAccount: string,
   treasuryPrivateKey: string,
   amountNear: string,
-  networkId: 'testnet' | 'mainnet'
+  networkId: 'testnet' | 'mainnet',
+  log: Logger
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   const nacl = await import('tweetnacl');
 
@@ -159,7 +160,7 @@ async function fundAccountFromTreasury(
     const publicKeyB58 = bs58.encode(Buffer.from(publicKey));
     const fullPublicKey = `ed25519:${publicKeyB58}`;
     
-    console.log('[MPC] Treasury public key:', fullPublicKey);
+    log.info({ accountId: treasuryAccount }, 'Treasury public key verified');
     
     // Get access key for nonce and block hash
     const accessKeyResponse = await fetch(rpcUrl, {
@@ -184,7 +185,7 @@ async function fundAccountFromTreasury(
     };
     
     if (accessKeyResult.error || !accessKeyResult.result) {
-      console.error('[MPC] Access key error:', accessKeyResult.error);
+      log.error({ err: new Error(JSON.stringify(accessKeyResult.error)) }, 'Access key error');
       return { 
         success: false, 
         error: `Could not get access key: ${accessKeyResult.error?.cause?.name || 'Unknown'}`,
@@ -238,7 +239,7 @@ async function fundAccountFromTreasury(
     };
     
     if (submitResult.error) {
-      console.error('[MPC] Transaction error:', submitResult.error);
+      log.error({ err: new Error(submitResult.error.data || submitResult.error.message || 'Transaction failed') }, 'Transaction error');
       return { 
         success: false, 
         error: submitResult.error.data || submitResult.error.message || 'Transaction failed',
@@ -246,13 +247,13 @@ async function fundAccountFromTreasury(
     }
     
     const resultHash = submitResult.result?.transaction?.hash || 'unknown';
-    console.log('[MPC] Funded account:', accountId, 'txHash:', resultHash);
+    log.info({ accountId, txHash: resultHash }, 'Funded account');
     
     return { success: true, txHash: resultHash };
   } catch (error) {
-    console.error('[MPC] Treasury funding failed:', error);
-    return { 
-      success: false, 
+    log.error({ err: error }, 'Treasury funding failed');
+    return {
+      success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -393,19 +394,13 @@ export class MPCAccountManager {
     // Derivation path for MPC key generation
     const derivationPath = `near-anon-auth,${userId}`;
 
-    console.log('[MPC] Creating NEAR account:', {
-      nearAccountId,
-      derivationPath,
-      mpcContractId: this.mpcContractId,
-    });
+    this.log.info({ nearAccountId, network: this.networkId }, 'Creating NEAR account');
 
     // Both mainnet and testnet: Use implicit accounts
     // Implicit account ID = hex of public key (64 chars)
     try {
       if (!this.derivationSalt && !warnedNoDerivationSalt) {
-        console.warn(
-          '[near-phantom-auth] No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.'
-        );
+        this.log.warn('No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.');
         warnedNoDerivationSalt = true;
       }
 
@@ -417,12 +412,12 @@ export class MPCAccountManager {
       const implicitAccountId = publicKeyBytes.toString('hex');
       const publicKey = `ed25519:${bs58.encode(publicKeyBytes)}`;
       
-      console.log(`[MPC] Created ${this.networkId} implicit account:`, implicitAccountId);
+      this.log.info({ accountId: implicitAccountId, network: this.networkId }, 'Created implicit account');
       
       // Check if account already funded/exists
       const alreadyExists = await accountExists(implicitAccountId, this.networkId);
       if (alreadyExists) {
-        console.log('[MPC] Implicit account already funded:', implicitAccountId);
+        this.log.info({ accountId: implicitAccountId }, 'Implicit account already funded');
         return {
           nearAccountId: implicitAccountId,
           derivationPath,
@@ -434,23 +429,24 @@ export class MPCAccountManager {
       // Fund the account from treasury if configured
       let onChain = false;
       if (this.treasuryAccount && this.treasuryPrivateKey) {
-        console.log('[MPC] Funding implicit account from treasury...');
+        this.log.info({ accountId: implicitAccountId }, 'Funding implicit account from treasury');
         const fundResult = await fundAccountFromTreasury(
           implicitAccountId,
           this.treasuryAccount,
           this.treasuryPrivateKey,
           this.fundingAmount,
-          this.networkId
+          this.networkId,
+          this.log
         );
-        
+
         if (fundResult.success) {
-          console.log('[MPC] Account funded:', fundResult.txHash);
+          this.log.info({ txHash: fundResult.txHash }, 'Account funded');
           onChain = true;
         } else {
-          console.warn('[MPC] Funding failed, account will be dormant:', fundResult.error);
+          this.log.warn({ err: new Error(fundResult.error) }, 'Funding failed, account will be dormant');
         }
       } else {
-        console.warn('[MPC] No treasury configured, account will be dormant until funded');
+        this.log.warn('No treasury configured, account will be dormant until funded');
       }
       
       return {
@@ -460,7 +456,7 @@ export class MPCAccountManager {
         onChain,
       };
     } catch (error) {
-      console.error('[MPC] Mainnet implicit account creation failed:', error);
+      this.log.error({ err: error }, 'Mainnet implicit account creation failed');
       return {
         nearAccountId,
         derivationPath,
@@ -489,10 +485,7 @@ export class MPCAccountManager {
     // - Call our recovery contract
     // - Not transfer funds or do anything else
     
-    console.log('[MPC] Adding recovery wallet:', {
-      nearAccountId,
-      recoveryWalletId,
-    });
+    this.log.info({ nearAccountId, recoveryWalletId }, 'Adding recovery wallet');
 
     // TODO: Implement full MPC signing flow
     // For now, mark as pending

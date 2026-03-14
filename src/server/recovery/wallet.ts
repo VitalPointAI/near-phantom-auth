@@ -11,6 +11,9 @@ import bs58 from 'bs58';
 import pino from 'pino';
 import type { Logger } from 'pino';
 
+// Module-level silent logger for standalone exported functions
+const _log = pino({ level: 'silent' }).child({ module: 'wallet-recovery' });
+
 export interface WalletRecoveryConfig {
   nearNetwork: 'testnet' | 'mainnet';
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
@@ -61,7 +64,7 @@ export function verifyWalletSignature(
       publicKeyBytes
     );
   } catch (error) {
-    console.error('[WalletRecovery] Signature verification failed:', error);
+    _log.error({ err: error }, 'Signature verification failed');
     return false;
   }
 }

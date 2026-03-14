@@ -39,7 +39,7 @@ export function createAuthMiddleware(
       
       next();
     } catch (error) {
-      console.error('[AnonAuth] Middleware error:', error);
+      log.error({ err: error }, 'Middleware error');
       next();
     }
   };
@@ -78,7 +78,7 @@ export function createRequireAuth(
       
       next();
     } catch (error) {
-      console.error('[AnonAuth] Auth check error:', error);
+      log.error({ err: error }, 'Auth check error');
       res.status(500).json({ error: 'Authentication check failed' });
     }
   };
