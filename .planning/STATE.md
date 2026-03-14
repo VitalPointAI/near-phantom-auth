@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-03-14T20:24:20.982Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-14T20:26:35.830Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 16
   percent: 100
 ---
 
@@ -64,6 +64,7 @@ Progress: [██████████] 100%
 | Phase 05-db-integrity-and-functional-stubs P03 | 15 | 2 tasks | 3 files |
 | Phase 06-scalability-tech-debt-and-email P02 | 3 | 2 tasks | 4 files |
 | Phase 06-scalability-tech-debt-and-email P03 | 224 | 2 tasks | 5 files |
+| Phase 06-scalability-tech-debt-and-email P01 | 7 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,9 @@ Recent decisions affecting current work:
 - [Phase 06-03]: EmailService is optional — absence means graceful skip with info log (BUG-05 satisfied)
 - [Phase 06-03]: Email failure is isolated from registration — caught separately, logs warn, does not throw
 - [Phase 06-03]: @aws-sdk/client-ses externalized in tsup — library consumers provide their own SES dependency
+- [Phase 06-01]: OAuthStateRecord defined in types/index.ts to avoid circular imports — does not import from oauth/index.ts
+- [Phase 06-01]: stateStore Map kept as fallback for custom adapters without DB state methods — no breaking changes
+- [Phase 06-01]: mapOAuthUserRows() shared helper eliminates duplicated row-to-OAuthUser mapping across three getOAuthUser* methods
 
 ### Pending Todos
 
@@ -125,6 +129,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T20:24:20.979Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-03-14T20:26:35.827Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

@@ -34,7 +34,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 - [x] **INFRA-01**: Structured logging replaces all console.log/error statements (pino or similar)
 - [x] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
-- [ ] **INFRA-03**: OAuth state stored in database instead of in-memory Map
+- [x] **INFRA-03**: OAuth state stored in database instead of in-memory Map
 - [ ] **INFRA-04**: Automatic expired session and challenge cleanup mechanism
 - [x] **INFRA-05**: Explicit cookie-parser dependency check in OAuth callback
 
@@ -47,7 +47,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Performance
 
-- [ ] **PERF-01**: OAuth user lookups use JOIN queries instead of N+1 sequential queries
+- [x] **PERF-01**: OAuth user lookups use JOIN queries instead of N+1 sequential queries
 - [x] **PERF-02**: IPFS gateway fallback uses `Promise.any()` for concurrent requests
 
 ### Email Integration
@@ -113,14 +113,14 @@ Deferred to future release. Tracked but not in current roadmap.
 | STUB-03 | Phase 5 | Complete |
 | INFRA-01 | Phase 3 | Complete |
 | INFRA-02 | Phase 5 | Complete |
-| INFRA-03 | Phase 6 | Pending |
+| INFRA-03 | Phase 6 | Complete |
 | INFRA-04 | Phase 6 | Pending |
 | INFRA-05 | Phase 4 | Complete |
 | DEBT-01 | Phase 6 | Complete |
 | DEBT-02 | Phase 1 | Complete |
 | DEBT-03 | Phase 6 | Complete |
 | DEBT-04 | Phase 6 | Complete |
-| PERF-01 | Phase 6 | Pending |
+| PERF-01 | Phase 6 | Complete |
 | PERF-02 | Phase 6 | Complete |
 | EMAIL-01 | Phase 6 | Complete |
 | EMAIL-02 | Phase 6 | Complete |
