@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Atomic Security Fixes** - Eliminate timing side-channel, fix session persistence, correct MPC math and transaction format
 - [x] **Phase 2: Input Validation** - Add zod schemas to all 16 route endpoints; reject malformed requests before they reach handlers (completed 2026-03-14)
-- [ ] **Phase 3: Structured Logging** - Replace 40+ console statements with injectable pino logger with redaction of sensitive fields
+- [x] **Phase 3: Structured Logging** - Replace 40+ console statements with injectable pino logger with redaction of sensitive fields (completed 2026-03-14)
 - [ ] **Phase 4: HTTP Defenses** - Add tiered rate limiting and opt-in CSRF protection inside library-owned routers
 - [ ] **Phase 5: DB Integrity and Functional Stubs** - Wrap registration in a database transaction; implement real MPC signing and missing endpoints
 - [ ] **Phase 6: Scalability, Tech Debt, and Email** - Move OAuth state to DB, add cleanup, expand codenames, fix N+1 queries, wire AWS SES
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
 | 2. Input Validation | 2/2 | Complete   | 2026-03-14 |
-| 3. Structured Logging | 1/2 | In Progress|  |
+| 3. Structured Logging | 2/2 | Complete   | 2026-03-14 |
 | 4. HTTP Defenses | 0/TBD | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |
 | 6. Scalability, Tech Debt, and Email | 0/TBD | Not started | - |
