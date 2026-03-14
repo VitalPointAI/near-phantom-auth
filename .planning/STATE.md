@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-14T22:55:52.927Z"
-last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-14T22:57:00Z"
+last_activity: 2026-03-14 — Phase 07 Plan 03 complete — passkey, MPC addRecoveryWallet, and db-integrity tests (TEST-02, TEST-03)
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 21
-  completed_plans: 19
-  percent: 100
+  completed_plans: 20
+  percent: 95
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 
 ## Current Position
 
-Phase: 2 of 7 (Input Validation)
-Plan: 2 of 2 in current phase — COMPLETE
-Status: Phase 02 complete — all POST routes validated with Zod schemas
-Last activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
+Phase: 7 of 7 (Test Coverage)
+Plan: 3 of 4 in current phase
+Status: Phase 07 Plan 03 complete — passkey lifecycle tests, addRecoveryWallet fetch-level tests, db-integrity stubs implemented
+Last activity: 2026-03-14 — Phase 07 Plan 03 complete — TEST-02 and TEST-03 satisfied; 171 tests passing
 
 Progress: [██████████] 100%
 
@@ -122,6 +122,9 @@ Recent decisions affecting current work:
 - [Phase 06-04]: createCleanupScheduler is standalone export, not embedded in AnonAuthInstance — composable pattern
 - [Phase 06-04]: handle.unref() called immediately after setInterval — prevents timer from blocking process exit
 - [Phase 06-04]: cleanExpiredChallenges and cleanExpiredOAuthStates optional-chained with ?? 0 — custom adapters without these methods still work
+- [Phase 07-03]: vi.clearAllMocks() in beforeEach + re-apply mocked values ensures passkey test isolation between describe blocks
+- [Phase 07-03]: INFRA-02 transaction rollback test uses separate txAdapter in db.transaction callback mock — correctly isolates inner adapter behavior
+- [Phase 07-03]: addRecoveryWallet tests use nacl.sign.keyPair() real ed25519 treasury key + fetch-level mocking (not manager stub) for STUB-01 coverage
 - [Phase 07-01]: No mocking needed for crypto-based pure functions — Node crypto is deterministic enough for round-trip tests
 - [Phase 07-01]: Statistical uniqueness check: 50 samples expect >=40 unique (collision space is 50k+ for codenames)
 - [Phase 07-02]: session.test.ts adversarial coverage was already complete — tampered, truncated, and extended cookie cases all verified green without modification
