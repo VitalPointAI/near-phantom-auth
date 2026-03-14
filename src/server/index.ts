@@ -233,6 +233,10 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   };
 }
 
+// Standalone scheduler and email exports
+export { createCleanupScheduler, type CleanupScheduler } from './cleanup.js';
+export { createEmailService, type EmailService, type EmailConfig } from './email.js';
+
 // Re-export types and utilities
 export type {
   AnonAuthConfig,
