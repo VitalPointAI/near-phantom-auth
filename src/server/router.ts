@@ -1,6 +1,6 @@
 /**
  * Express Router
- * 
+ *
  * API routes for registration, authentication, and recovery.
  */
 
@@ -13,6 +13,20 @@ import type { WalletRecoveryManager } from './recovery/wallet.js';
 import type { IPFSRecoveryManager } from './recovery/ipfs.js';
 import type { DatabaseAdapter, CodenameConfig } from '../types/index.js';
 import { generateCodename, isValidCodename } from './codename.js';
+import { validateBody } from './validation/validateBody.js';
+import {
+  registerStartBodySchema,
+  registerFinishBodySchema,
+  loginStartBodySchema,
+  loginFinishBodySchema,
+  logoutBodySchema,
+  walletLinkBodySchema,
+  walletVerifyBodySchema,
+  walletStartBodySchema,
+  walletFinishBodySchema,
+  ipfsSetupBodySchema,
+  ipfsRecoverBodySchema,
+} from './validation/schemas.js';
 
 export interface RouterConfig {
   db: DatabaseAdapter;
@@ -48,35 +62,38 @@ export function createRouter(config: RouterConfig): Router {
    */
   router.post('/register/start', async (req: Request, res: Response) => {
     try {
+      const body = validateBody(registerStartBodySchema, req, res);
+      if (!body) return;
+
       // Generate temporary user ID for registration
       const tempUserId = crypto.randomUUID();
-      
+
       // Generate codename
       const style = config.codename?.style || 'nato-phonetic';
       let codename: string;
-      
+
       if (config.codename?.generator) {
         codename = config.codename.generator(tempUserId);
       } else {
         codename = generateCodename(style);
       }
-      
+
       // Ensure codename is unique
       let attempts = 0;
       while (await db.getUserByCodename(codename) && attempts < 10) {
         codename = generateCodename(style);
         attempts++;
       }
-      
+
       if (attempts >= 10) {
         return res.status(500).json({ error: 'Failed to generate unique codename' });
       }
-      
+
       const { challengeId, options } = await passkeyManager.startRegistration(
         tempUserId,
         codename
       );
-      
+
       res.json({
         challengeId,
         options,
@@ -95,16 +112,15 @@ export function createRouter(config: RouterConfig): Router {
    */
   router.post('/register/finish', async (req: Request, res: Response) => {
     try {
-      const { challengeId, response, tempUserId, codename } = req.body;
-      
-      if (!challengeId || !response || !tempUserId || !codename) {
-        return res.status(400).json({ error: 'Missing required fields' });
-      }
-      
+      const body = validateBody(registerFinishBodySchema, req, res);
+      if (!body) return;
+
+      const { challengeId, response, tempUserId, codename } = body;
+
       if (!isValidCodename(codename)) {
         return res.status(400).json({ error: 'Invalid codename format' });
       }
-      
+
       // Verify passkey registration
       const { verified, passkeyData } = await passkeyManager.finishRegistration(
         challengeId,
@@ -142,7 +158,7 @@ export function createRouter(config: RouterConfig): Router {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       });
-      
+
       res.json({
         success: true,
         codename: user.codename,
@@ -164,10 +180,13 @@ export function createRouter(config: RouterConfig): Router {
    */
   router.post('/login/start', async (req: Request, res: Response) => {
     try {
-      const { codename } = req.body;
-      
+      const body = validateBody(loginStartBodySchema, req, res);
+      if (!body) return;
+
+      const { codename } = body;
+
       let userId: string | undefined;
-      
+
       if (codename) {
         const user = await db.getUserByCodename(codename);
         if (!user) {
@@ -175,9 +194,9 @@ export function createRouter(config: RouterConfig): Router {
         }
         userId = user.id;
       }
-      
+
       const { challengeId, options } = await passkeyManager.startAuthentication(userId);
-      
+
       res.json({ challengeId, options });
     } catch (error) {
       console.error('[AnonAuth] Login start error:', error);
@@ -191,33 +210,32 @@ export function createRouter(config: RouterConfig): Router {
    */
   router.post('/login/finish', async (req: Request, res: Response) => {
     try {
-      const { challengeId, response } = req.body;
-      
-      if (!challengeId || !response) {
-        return res.status(400).json({ error: 'Missing required fields' });
-      }
-      
+      const body = validateBody(loginFinishBodySchema, req, res);
+      if (!body) return;
+
+      const { challengeId, response } = body;
+
       const { verified, userId } = await passkeyManager.finishAuthentication(
         challengeId,
         response
       );
-      
+
       if (!verified || !userId) {
         return res.status(401).json({ error: 'Authentication failed' });
       }
-      
+
       const user = await db.getUserById(userId);
-      
+
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      
+
       // Create session
       await sessionManager.createSession(user.id, res, {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       });
-      
+
       res.json({
         success: true,
         codename: user.codename,
@@ -234,6 +252,9 @@ export function createRouter(config: RouterConfig): Router {
    */
   router.post('/logout', async (req: Request, res: Response) => {
     try {
+      const body = validateBody(logoutBodySchema, req, res);
+      if (!body) return;
+
       await sessionManager.destroySession(req, res);
       res.json({ success: true });
     } catch (error) {
@@ -249,17 +270,17 @@ export function createRouter(config: RouterConfig): Router {
   router.get('/session', async (req: Request, res: Response) => {
     try {
       const session = await sessionManager.getSession(req);
-      
+
       if (!session) {
         return res.status(401).json({ authenticated: false });
       }
-      
+
       const user = await db.getUserById(session.userId);
-      
+
       if (!user) {
         return res.status(401).json({ authenticated: false });
       }
-      
+
       res.json({
         authenticated: true,
         codename: user.codename,
@@ -283,14 +304,17 @@ export function createRouter(config: RouterConfig): Router {
      */
     router.post('/recovery/wallet/link', async (req: Request, res: Response) => {
       try {
+        const body = validateBody(walletLinkBodySchema, req, res);
+        if (!body) return;
+
         const session = await sessionManager.getSession(req);
-        
+
         if (!session) {
           return res.status(401).json({ error: 'Authentication required' });
         }
-        
+
         const { challenge: walletChallenge, expiresAt } = walletRecovery.generateLinkChallenge();
-        
+
         // Store challenge for verification
         await db.storeChallenge({
           id: crypto.randomUUID(),
@@ -300,7 +324,7 @@ export function createRouter(config: RouterConfig): Router {
           expiresAt,
           metadata: { action: 'wallet-link' },
         });
-        
+
         res.json({
           challenge: walletChallenge,
           expiresAt: expiresAt.toISOString(),
@@ -318,35 +342,34 @@ export function createRouter(config: RouterConfig): Router {
     router.post('/recovery/wallet/verify', async (req: Request, res: Response) => {
       try {
         const session = await sessionManager.getSession(req);
-        
+
         if (!session) {
           return res.status(401).json({ error: 'Authentication required' });
         }
-        
-        const { signature, challenge, walletAccountId } = req.body;
-        
-        if (!signature || !challenge || !walletAccountId) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
+
+        const body = validateBody(walletVerifyBodySchema, req, res);
+        if (!body) return;
+
+        const { signature, challenge, walletAccountId } = body;
+
         const { verified, walletId } = walletRecovery.verifyLinkSignature(
           signature,
           challenge
         );
-        
+
         if (!verified) {
           return res.status(401).json({ error: 'Invalid signature' });
         }
-        
+
         const user = await db.getUserById(session.userId);
-        
+
         if (!user) {
           return res.status(404).json({ error: 'User not found' });
         }
-        
+
         // Add wallet as access key on-chain (no DB storage)
         await mpcManager.addRecoveryWallet(user.nearAccountId, walletAccountId);
-        
+
         // Store reference for our records (just the fact that wallet recovery is enabled)
         await db.storeRecoveryData({
           userId: user.id,
@@ -354,7 +377,7 @@ export function createRouter(config: RouterConfig): Router {
           reference: 'enabled', // We don't store the wallet ID!
           createdAt: new Date(),
         });
-        
+
         res.json({
           success: true,
           message: 'Wallet linked for recovery. The link is stored on-chain, not in our database.',
@@ -371,8 +394,11 @@ export function createRouter(config: RouterConfig): Router {
      */
     router.post('/recovery/wallet/start', async (req: Request, res: Response) => {
       try {
+        const body = validateBody(walletStartBodySchema, req, res);
+        if (!body) return;
+
         const { challenge, expiresAt } = walletRecovery.generateRecoveryChallenge();
-        
+
         res.json({
           challenge,
           expiresAt: expiresAt.toISOString(),
@@ -389,35 +415,34 @@ export function createRouter(config: RouterConfig): Router {
      */
     router.post('/recovery/wallet/finish', async (req: Request, res: Response) => {
       try {
-        const { signature, challenge, nearAccountId } = req.body;
-        
-        if (!signature || !challenge || !nearAccountId) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
+        const body = validateBody(walletFinishBodySchema, req, res);
+        if (!body) return;
+
+        const { signature, challenge, nearAccountId } = body;
+
         const { verified } = await walletRecovery.verifyRecoverySignature(
           signature,
           challenge,
           nearAccountId
         );
-        
+
         if (!verified) {
           return res.status(401).json({ error: 'Recovery verification failed' });
         }
-        
+
         // Find user by NEAR account
         const user = await db.getUserByNearAccount(nearAccountId);
-        
+
         if (!user) {
           return res.status(404).json({ error: 'Account not found' });
         }
-        
+
         // Create session for recovered user
         await sessionManager.createSession(user.id, res, {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
-        
+
         res.json({
           success: true,
           codename: user.codename,
@@ -442,17 +467,16 @@ export function createRouter(config: RouterConfig): Router {
     router.post('/recovery/ipfs/setup', async (req: Request, res: Response) => {
       try {
         const session = await sessionManager.getSession(req);
-        
+
         if (!session) {
           return res.status(401).json({ error: 'Authentication required' });
         }
-        
-        const { password } = req.body;
-        
-        if (!password) {
-          return res.status(400).json({ error: 'Password required' });
-        }
-        
+
+        const body = validateBody(ipfsSetupBodySchema, req, res);
+        if (!body) return;
+
+        const { password } = body;
+
         // Validate password
         const validation = ipfsRecovery.validatePassword(password);
         if (!validation.valid) {
@@ -461,13 +485,13 @@ export function createRouter(config: RouterConfig): Router {
             details: validation.errors,
           });
         }
-        
+
         const user = await db.getUserById(session.userId);
-        
+
         if (!user) {
           return res.status(404).json({ error: 'User not found' });
         }
-        
+
         // Create and pin backup
         const { cid } = await ipfsRecovery.createRecoveryBackup(
           {
@@ -478,7 +502,7 @@ export function createRouter(config: RouterConfig): Router {
           },
           password
         );
-        
+
         // Store CID reference
         await db.storeRecoveryData({
           userId: user.id,
@@ -486,7 +510,7 @@ export function createRouter(config: RouterConfig): Router {
           reference: cid,
           createdAt: new Date(),
         });
-        
+
         res.json({
           success: true,
           cid,
@@ -504,12 +528,11 @@ export function createRouter(config: RouterConfig): Router {
      */
     router.post('/recovery/ipfs/recover', async (req: Request, res: Response) => {
       try {
-        const { cid, password } = req.body;
-        
-        if (!cid || !password) {
-          return res.status(400).json({ error: 'CID and password required' });
-        }
-        
+        const body = validateBody(ipfsRecoverBodySchema, req, res);
+        if (!body) return;
+
+        const { cid, password } = body;
+
         // Decrypt backup
         let payload;
         try {
@@ -517,20 +540,20 @@ export function createRouter(config: RouterConfig): Router {
         } catch {
           return res.status(401).json({ error: 'Invalid password or CID' });
         }
-        
+
         // Find user
         const user = await db.getUserById(payload.userId);
-        
+
         if (!user) {
           return res.status(404).json({ error: 'Account not found' });
         }
-        
+
         // Create session
         await sessionManager.createSession(user.id, res, {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
-        
+
         res.json({
           success: true,
           codename: user.codename,
