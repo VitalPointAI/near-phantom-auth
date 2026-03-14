@@ -9,6 +9,7 @@ import type {
   OAuthUser,
   CreateOAuthUserInput,
   OAuthProvider,
+  OAuthStateRecord,
   Session,
   CreateSessionInput,
   Passkey,
@@ -109,6 +110,16 @@ CREATE TABLE IF NOT EXISTS anon_recovery (
   UNIQUE(user_id, type)
 );
 
+-- OAuth state (cross-instance durability for OAuth login flows)
+CREATE TABLE IF NOT EXISTS oauth_state (
+  state TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  code_verifier TEXT,
+  redirect_uri TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_anon_sessions_user ON anon_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_anon_sessions_expires ON anon_sessions(expires_at);
@@ -117,7 +128,47 @@ CREATE INDEX IF NOT EXISTS idx_anon_challenges_expires ON anon_challenges(expire
 CREATE INDEX IF NOT EXISTS idx_oauth_users_email ON oauth_users(email);
 CREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);
 CREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);
 `;
+
+/**
+ * Map JOIN query result rows (oauth_users LEFT JOIN oauth_providers) into an OAuthUser object.
+ * Returns null if no user was found (empty rows or first row has no user id).
+ */
+function mapOAuthUserRows(rows: Record<string, unknown>[]): OAuthUser | null {
+  if (rows.length === 0 || !rows[0].id) return null;
+
+  const first = rows[0];
+  const providers: OAuthProvider[] = [];
+
+  for (const row of rows) {
+    // LEFT JOIN may produce a row with no provider data when user has zero providers
+    if (row.provider) {
+      providers.push({
+        provider: row.provider as 'google' | 'github' | 'twitter',
+        providerId: row.provider_id as string,
+        email: row.p_email as string | undefined,
+        name: row.p_name as string | undefined,
+        avatarUrl: row.p_avatar_url as string | undefined,
+        connectedAt: row.connected_at as Date,
+      });
+    }
+  }
+
+  return {
+    id: first.id as string,
+    type: 'standard',
+    email: first.email as string,
+    name: first.name as string | undefined,
+    avatarUrl: first.avatar_url as string | undefined,
+    nearAccountId: first.near_account_id as string,
+    mpcPublicKey: first.mpc_public_key as string,
+    derivationPath: first.derivation_path as string,
+    providers,
+    createdAt: first.created_at as Date,
+    lastActiveAt: first.last_active_at as Date,
+  };
+}
 
 /**
  * Create PostgreSQL adapter
@@ -457,97 +508,50 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
 
     async getOAuthUserById(id: string): Promise<OAuthUser | null> {
       const p = await getPool();
-      const userResult = await p.query(
-        'SELECT * FROM oauth_users WHERE id = $1',
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         LEFT JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.id = $1`,
         [id]
       );
-      
-      if (userResult.rows.length === 0) return null;
-      
-      const userRow = userResult.rows[0];
-      
-      // Get providers
-      const providersResult = await p.query(
-        'SELECT * FROM oauth_providers WHERE user_id = $1',
-        [id]
-      );
-      
-      const providers: OAuthProvider[] = providersResult.rows.map((row: Record<string, unknown>) => ({
-        provider: row.provider as 'google' | 'github' | 'twitter',
-        providerId: row.provider_id as string,
-        email: row.email as string | undefined,
-        name: row.name as string | undefined,
-        avatarUrl: row.avatar_url as string | undefined,
-        connectedAt: row.connected_at as Date,
-      }));
-      
-      return {
-        id: userRow.id,
-        type: 'standard',
-        email: userRow.email,
-        name: userRow.name,
-        avatarUrl: userRow.avatar_url,
-        nearAccountId: userRow.near_account_id,
-        mpcPublicKey: userRow.mpc_public_key,
-        derivationPath: userRow.derivation_path,
-        providers,
-        createdAt: userRow.created_at,
-        lastActiveAt: userRow.last_active_at,
-      };
+      return mapOAuthUserRows(result.rows);
     },
 
     async getOAuthUserByEmail(email: string): Promise<OAuthUser | null> {
       const p = await getPool();
-      const userResult = await p.query(
-        'SELECT * FROM oauth_users WHERE email = $1',
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         LEFT JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.email = $1`,
         [email]
       );
-      
-      if (userResult.rows.length === 0) return null;
-      
-      const userRow = userResult.rows[0];
-      
-      // Get providers
-      const providersResult = await p.query(
-        'SELECT * FROM oauth_providers WHERE user_id = $1',
-        [userRow.id]
-      );
-      
-      const providers: OAuthProvider[] = providersResult.rows.map((row: Record<string, unknown>) => ({
-        provider: row.provider as 'google' | 'github' | 'twitter',
-        providerId: row.provider_id as string,
-        email: row.email as string | undefined,
-        name: row.name as string | undefined,
-        avatarUrl: row.avatar_url as string | undefined,
-        connectedAt: row.connected_at as Date,
-      }));
-      
-      return {
-        id: userRow.id,
-        type: 'standard',
-        email: userRow.email,
-        name: userRow.name,
-        avatarUrl: userRow.avatar_url,
-        nearAccountId: userRow.near_account_id,
-        mpcPublicKey: userRow.mpc_public_key,
-        derivationPath: userRow.derivation_path,
-        providers,
-        createdAt: userRow.created_at,
-        lastActiveAt: userRow.last_active_at,
-      };
+      return mapOAuthUserRows(result.rows);
     },
 
     async getOAuthUserByProvider(provider: string, providerId: string): Promise<OAuthUser | null> {
       const p = await getPool();
-      const providerResult = await p.query(
-        'SELECT user_id FROM oauth_providers WHERE provider = $1 AND provider_id = $2',
+      // Subquery finds the user_id via the provider match; main query fetches user + all providers
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.id = (
+           SELECT user_id FROM oauth_providers WHERE provider = $1 AND provider_id = $2
+         )`,
         [provider, providerId]
       );
-      
-      if (providerResult.rows.length === 0) return null;
-      
-      const userId = providerResult.rows[0].user_id;
-      return this.getOAuthUserById(userId);
+      return mapOAuthUserRows(result.rows);
     },
 
     async linkOAuthProvider(userId: string, provider: OAuthProvider): Promise<void> {
@@ -808,6 +812,56 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
     async deleteRecoveryData(userId: string): Promise<void> {
       const p = await getPool();
       await p.query('DELETE FROM anon_recovery WHERE user_id = $1', [userId]);
+    },
+
+    // ============================================
+    // OAuth State (DB-backed, cross-instance)
+    // ============================================
+
+    async storeOAuthState(state: OAuthStateRecord): Promise<void> {
+      const p = await getPool();
+      await p.query(
+        `INSERT INTO oauth_state (state, provider, code_verifier, redirect_uri, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (state) DO NOTHING`,
+        [state.state, state.provider, state.codeVerifier || null, state.redirectUri, state.expiresAt]
+      );
+    },
+
+    async getOAuthState(stateKey: string): Promise<OAuthStateRecord | null> {
+      const p = await getPool();
+      const result = await p.query(
+        `SELECT state, provider, code_verifier, redirect_uri, expires_at
+         FROM oauth_state
+         WHERE state = $1 AND expires_at > NOW()`,
+        [stateKey]
+      );
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        state: row.state as string,
+        provider: row.provider as string,
+        codeVerifier: row.code_verifier as string | undefined,
+        redirectUri: row.redirect_uri as string,
+        expiresAt: row.expires_at as Date,
+      };
+    },
+
+    async deleteOAuthState(stateKey: string): Promise<void> {
+      const p = await getPool();
+      await p.query('DELETE FROM oauth_state WHERE state = $1', [stateKey]);
+    },
+
+    async cleanExpiredChallenges(): Promise<number> {
+      const p = await getPool();
+      const result = await p.query('DELETE FROM anon_challenges WHERE expires_at < NOW()');
+      return result.rowCount || 0;
+    },
+
+    async cleanExpiredOAuthStates(): Promise<number> {
+      const p = await getPool();
+      const result = await p.query('DELETE FROM oauth_state WHERE expires_at < NOW()');
+      return result.rowCount || 0;
     },
   };
 }
