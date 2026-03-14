@@ -9,7 +9,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Security
 
-- [ ] **SEC-01**: Session signature verification uses constant-time comparison (`crypto.timingSafeEqual`)
+- [x] **SEC-01**: Session signature verification uses constant-time comparison (`crypto.timingSafeEqual`)
 - [ ] **SEC-02**: All auth and recovery endpoints have rate limiting (stricter limits on recovery)
 - [ ] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
 - [x] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
@@ -97,7 +97,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | Phase 1 | Pending |
+| SEC-01 | Phase 1 | Complete |
 | SEC-02 | Phase 4 | Pending |
 | SEC-03 | Phase 4 | Pending |
 | SEC-04 | Phase 1 | Complete |

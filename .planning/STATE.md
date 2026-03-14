@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-14T12:51:03.583Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-14T12:56:14.966Z"
 last_activity: 2026-03-14 — Roadmap created, all 35 requirements mapped to 7 phases
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 6 | 2 tasks | 7 files |
+| Phase 01 P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - [Init]: zod for runtime validation, no `.strict()` on WebAuthn response fields (Phase 2)
 - [Init]: Make new DatabaseAdapter methods optional with internal fallbacks to avoid hard breaking changes (Phase 5)
 - [Phase 01]: it.todo() used for all test stubs — suite runs green with 0 failures, 16 todos, clean scaffolding for Plans 02 and 03
+- [Phase 01]: warnedNoUpdateSessionExpiry is instance-scoped (inside createSessionManager closure), not module-level — prevents test isolation issues and is semantically correct since different manager instances are independent
+- [Phase 01]: Length guard before timingSafeEqual is required — timingSafeEqual throws ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH on mismatched-length buffers, so truncated/extended signatures are rejected by length check before comparison
 
 ### Pending Todos
 
@@ -79,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T12:51:03.580Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-14T12:56:14.964Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
