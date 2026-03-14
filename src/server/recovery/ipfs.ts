@@ -216,10 +216,9 @@ async function pinToInfura(
 }
 
 /**
- * Fetch data from IPFS gateway
+ * Fetch data from IPFS gateway (concurrent race via Promise.any)
  */
 async function fetchFromIPFS(cid: string): Promise<Uint8Array> {
-  // Try multiple gateways for reliability
   const gateways = [
     `https://gateway.pinata.cloud/ipfs/${cid}`,
     `https://w3s.link/ipfs/${cid}`,
@@ -228,23 +227,21 @@ async function fetchFromIPFS(cid: string): Promise<Uint8Array> {
     `https://cloudflare-ipfs.com/ipfs/${cid}`,
     `https://dweb.link/ipfs/${cid}`,
   ];
-  
-  for (const gateway of gateways) {
-    try {
-      const response = await fetch(gateway, {
-        headers: {
-          'Accept': 'application/octet-stream',
-        },
-      });
-      if (response.ok) {
-        return new Uint8Array(await response.arrayBuffer());
-      }
-    } catch {
-      continue;
-    }
+
+  const fetchGateway = async (url: string): Promise<Uint8Array> => {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/octet-stream' },
+    });
+    if (!response.ok) throw new Error(`Gateway ${url} returned ${response.status}`);
+    return new Uint8Array(await response.arrayBuffer());
+  };
+
+  try {
+    return await Promise.any(gateways.map(fetchGateway));
+  } catch {
+    // AggregateError: all gateways failed
+    throw new Error('Failed to fetch from IPFS - tried all gateways');
   }
-  
-  throw new Error('Failed to fetch from IPFS - tried all gateways');
 }
 
 /**
