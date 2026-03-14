@@ -18,7 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: HTTP Defenses** - Add tiered rate limiting and opt-in CSRF protection inside library-owned routers (completed 2026-03-14)
 - [x] **Phase 5: DB Integrity and Functional Stubs** - Wrap registration in a database transaction; implement real MPC signing and missing endpoints (completed 2026-03-14)
 - [x] **Phase 6: Scalability, Tech Debt, and Email** - Move OAuth state to DB, add cleanup, expand codenames, fix N+1 queries, wire AWS SES (completed 2026-03-14)
-- [ ] **Phase 7: Test Coverage** - Unit and integration tests for all hardened code paths; zero gaps in security-critical modules
+- [x] **Phase 7: Test Coverage** - Unit and integration tests for all hardened code paths; zero gaps in security-critical modules
+- [ ] **Phase 8: Wire OAuth Callback to DB-Backed State Validation** - Replace cookie-based OAuth state comparison with DB-backed validateState(); fix unconditional cookieParser mounting
 
 ## Phase Details
 
@@ -133,6 +134,18 @@ Plans:
 - [x] 07-03-PLAN.md — Passkey unit tests (TEST-02), MPC addRecoveryWallet + db-integrity stubs (TEST-03)
 - [x] 07-04-PLAN.md — Integration tests: registration/auth flows (TEST-07) and recovery flows (TEST-08)
 
+### Phase 8: Wire OAuth Callback to DB-Backed State Validation
+**Goal**: The OAuth callback handler uses DB-backed state validation instead of cookie comparison; cookieParser is mounted unconditionally so OAuth works with or without CSRF enabled
+**Depends on**: Phase 6, Phase 7
+**Requirements**: INFRA-03
+**Gap Closure:** Closes gaps from v0.5 audit
+**Success Criteria** (what must be TRUE):
+  1. An OAuth login flow that starts on one server instance and completes on a different instance succeeds — `oauthManager.validateState(state)` is called in the callback, not cookie comparison
+  2. `cookieParser()` is mounted unconditionally in the OAuth router — OAuth callback works regardless of CSRF configuration
+  3. DB-stored OAuth state is consumed and atomically deleted during callback (replay protection works)
+  4. Tests verify DB-backed state validation and cookieParser availability without CSRF
+**Plans**: 0 plans
+
 ## Progress
 
 **Execution Order:**
@@ -147,3 +160,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. DB Integrity and Functional Stubs | 3/3 | Complete   | 2026-03-14 |
 | 6. Scalability, Tech Debt, and Email | 4/4 | Complete   | 2026-03-14 |
 | 7. Test Coverage | 4/4 | Complete   | 2026-03-14 |
+| 8. Wire OAuth Callback to DB-Backed State Validation | 0/0 | Not Started | — |
