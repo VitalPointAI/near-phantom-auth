@@ -6,6 +6,8 @@
  */
 
 import { createHash, randomBytes } from 'crypto';
+import bs58 from 'bs58';
+import BN from 'bn.js';
 
 export interface MPCAccount {
   nearAccountId: string;
@@ -20,6 +22,7 @@ export interface MPCConfig {
   treasuryAccount?: string;
   treasuryPrivateKey?: string;
   fundingAmount?: string; // in NEAR, default 0.01
+  derivationSalt?: string;
 }
 
 /**
@@ -38,32 +41,6 @@ function getRPCUrl(networkId: 'testnet' | 'mainnet'): string {
   return networkId === 'mainnet'
     ? 'https://rpc.mainnet.near.org'
     : 'https://rpc.testnet.near.org';
-}
-
-/**
- * Base58 encode bytes
- */
-function base58Encode(bytes: Buffer): string {
-  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let result = '';
-  let num = BigInt('0x' + bytes.toString('hex'));
-
-  while (num > 0n) {
-    const remainder = Number(num % 58n);
-    num = num / 58n;
-    result = ALPHABET[remainder] + result;
-  }
-
-  // Handle leading zeros
-  for (const byte of bytes) {
-    if (byte === 0) {
-      result = '1' + result;
-    } else {
-      break;
-    }
-  }
-
-  return result || '1';
 }
 
 /**
@@ -112,7 +89,7 @@ async function createTestnetAccount(accountId: string): Promise<string> {
   // Generate a random keypair for initial account access
   const seed = randomBytes(32);
   const publicKeyBytes = derivePublicKey(seed);
-  const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
+  const publicKey = `ed25519:${bs58.encode(publicKeyBytes)}`;
 
   const helperUrl = 'https://helper.testnet.near.org/account';
 
@@ -152,10 +129,8 @@ async function fundAccountFromTreasury(
   amountNear: string,
   networkId: 'testnet' | 'mainnet'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  // Dynamic import to avoid bundling issues
   const nacl = await import('tweetnacl');
-  const bs58 = await import('bs58');
-  
+
   try {
     const rpcUrl = getRPCUrl(networkId);
     
@@ -165,7 +140,7 @@ async function fundAccountFromTreasury(
     
     try {
       // Try base58 decoding first (standard NEAR format)
-      secretKey = bs58.default.decode(keyString);
+      secretKey = bs58.decode(keyString);
     } catch {
       // Fallback to base64
       secretKey = Buffer.from(keyString, 'base64');
@@ -173,11 +148,11 @@ async function fundAccountFromTreasury(
     
     // Extract public key from secret key
     // NEAR uses 64-byte secret key where last 32 bytes are public key
-    const publicKey = secretKey.length === 64 
-      ? secretKey.slice(32) 
-      : nacl.default.sign.keyPair.fromSeed(secretKey.slice(0, 32)).publicKey;
+    const publicKey = secretKey.length === 64
+      ? secretKey.slice(32)
+      : nacl.default.sign.keyPair.fromSeed(secretKey.slice(0, 32) as Uint8Array).publicKey;
     
-    const publicKeyB58 = bs58.default.encode(Buffer.from(publicKey));
+    const publicKeyB58 = bs58.encode(Buffer.from(publicKey));
     const fullPublicKey = `ed25519:${publicKeyB58}`;
     
     console.log('[MPC] Treasury public key:', fullPublicKey);
@@ -216,7 +191,11 @@ async function fundAccountFromTreasury(
     const blockHash = accessKeyResult.result.block_hash;
     
     // Convert NEAR to yoctoNEAR (1 NEAR = 10^24 yoctoNEAR)
-    const amountYocto = BigInt(Math.floor(parseFloat(amountNear) * 1e24));
+    // Using bn.js per project decision for NEAR-to-yoctoNEAR conversion
+    const [whole, fraction = ''] = amountNear.split('.');
+    const paddedFraction = fraction.padEnd(24, '0').slice(0, 24);
+    const yoctoStr = (whole + paddedFraction).replace(/^0+/, '') || '0';
+    const amountYocto = BigInt(new BN(yoctoStr).toString());
     
     // Build transaction manually using borsh serialization
     // Transaction structure: signerId, publicKey, nonce, receiverId, blockHash, actions
@@ -227,12 +206,12 @@ async function fundAccountFromTreasury(
       accountId,
       blockHash,
       amountYocto,
-      bs58.default
+      bs58
     );
     
     // Sign the transaction
     const txHash = createHash('sha256').update(transaction).digest();
-    const signature = nacl.default.sign.detached(txHash, secretKey);
+    const signature = nacl.default.sign.detached(txHash, secretKey as Uint8Array);
     
     // Build signed transaction
     const signedTx = buildSignedTransaction(transaction, signature, publicKey);
@@ -323,14 +302,15 @@ function buildSignedTransaction(
   publicKey: Uint8Array
 ): Uint8Array {
   const parts: Uint8Array[] = [];
-  
+
   // Transaction bytes
   parts.push(transaction);
-  
-  // Signature (enum + data) - ED25519 = 0
-  parts.push(new Uint8Array([0])); // signature type
-  parts.push(new Uint8Array(signature));
-  
+
+  // Signature enum (ED25519 = 0)
+  parts.push(new Uint8Array([0]));           // keyType: 1 byte
+  parts.push(new Uint8Array(publicKey));     // publicKey: 32 bytes
+  parts.push(new Uint8Array(signature));     // signature data: 64 bytes
+
   return concatArrays(parts);
 }
 
@@ -371,6 +351,9 @@ function concatArrays(arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
+// Module-level flag to warn once when derivationSalt is not configured
+let warnedNoDerivationSalt = false;
+
 /**
  * MPC Account Manager
  */
@@ -381,6 +364,7 @@ export class MPCAccountManager {
   private treasuryAccount?: string;
   private treasuryPrivateKey?: string;
   private fundingAmount: string;
+  private derivationSalt?: string;
 
   constructor(config: MPCConfig) {
     this.networkId = config.networkId;
@@ -389,6 +373,7 @@ export class MPCAccountManager {
     this.treasuryAccount = config.treasuryAccount;
     this.treasuryPrivateKey = config.treasuryPrivateKey;
     this.fundingAmount = config.fundingAmount || '0.01';
+    this.derivationSalt = config.derivationSalt;
   }
 
   /**
@@ -411,10 +396,20 @@ export class MPCAccountManager {
     // Both mainnet and testnet: Use implicit accounts
     // Implicit account ID = hex of public key (64 chars)
     try {
-      const seed = createHash('sha256').update(`implicit-${userId}`).digest();
+      if (!this.derivationSalt && !warnedNoDerivationSalt) {
+        console.warn(
+          '[near-phantom-auth] No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.'
+        );
+        warnedNoDerivationSalt = true;
+      }
+
+      const seedInput = this.derivationSalt
+        ? `implicit-${this.derivationSalt}-${userId}`
+        : `implicit-${userId}`;
+      const seed = createHash('sha256').update(seedInput).digest();
       const publicKeyBytes = derivePublicKey(seed);
       const implicitAccountId = publicKeyBytes.toString('hex');
-      const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
+      const publicKey = `ed25519:${bs58.encode(publicKeyBytes)}`;
       
       console.log(`[MPC] Created ${this.networkId} implicit account:`, implicitAccountId);
       

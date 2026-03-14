@@ -133,6 +133,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     treasuryAccount: config.mpc?.treasuryAccount,
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
     fundingAmount: config.mpc?.fundingAmount,
+    derivationSalt: config.mpc?.derivationSalt,
   });
 
   // Create recovery managers
