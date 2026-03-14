@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-14T20:26:35.830Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-03-14T20:30:58.246Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
   percent: 100
 ---
 
@@ -65,6 +65,7 @@ Progress: [██████████] 100%
 | Phase 06-scalability-tech-debt-and-email P02 | 3 | 2 tasks | 4 files |
 | Phase 06-scalability-tech-debt-and-email P03 | 224 | 2 tasks | 5 files |
 | Phase 06-scalability-tech-debt-and-email P01 | 7 | 2 tasks | 3 files |
+| Phase 06-scalability-tech-debt-and-email P04 | 8 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,9 @@ Recent decisions affecting current work:
 - [Phase 06-01]: OAuthStateRecord defined in types/index.ts to avoid circular imports — does not import from oauth/index.ts
 - [Phase 06-01]: stateStore Map kept as fallback for custom adapters without DB state methods — no breaking changes
 - [Phase 06-01]: mapOAuthUserRows() shared helper eliminates duplicated row-to-OAuthUser mapping across three getOAuthUser* methods
+- [Phase 06-04]: createCleanupScheduler is standalone export, not embedded in AnonAuthInstance — composable pattern
+- [Phase 06-04]: handle.unref() called immediately after setInterval — prevents timer from blocking process exit
+- [Phase 06-04]: cleanExpiredChallenges and cleanExpiredOAuthStates optional-chained with ?? 0 — custom adapters without these methods still work
 
 ### Pending Todos
 
@@ -129,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T20:26:35.827Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-14T20:30:58.243Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
