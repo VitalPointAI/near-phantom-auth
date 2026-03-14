@@ -64,6 +64,10 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     },
   });
 
+  // cookieParser mounted unconditionally — OAuth callback needs req.cookies
+  // regardless of CSRF config; CSRF middleware also depends on it
+  router.use(cookieParser());
+
   // CSRF protection (opt-in via config.csrf) with OAuth callback exemption
   if (config.csrf) {
     const { doubleCsrfProtection } = doubleCsrf({
@@ -85,7 +89,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
       },
     });
 
-    router.use(cookieParser());
+    // cookieParser already mounted above
     router.use(doubleCsrfProtection);
 
     log.info('CSRF protection enabled for OAuth router (callback exempt)');
@@ -195,16 +199,13 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
       const provider = req.params.provider as 'google' | 'github' | 'twitter';
       const { code, state } = body;
 
-      // Validate state
-      const storedState = req.cookies?.oauth_state;
-      if (state !== storedState) {
+      // DB-backed state validation — atomic lookup + delete (replay protection)
+      const oauthState = await oauthManager.validateState(state);
+      if (!oauthState) {
         return res.status(400).json({ error: 'Invalid state' });
       }
-
-      // Get code verifier for PKCE
-      const codeVerifier = req.cookies?.oauth_code_verifier;
-
-      // Clear OAuth cookies
+      const codeVerifier = oauthState.codeVerifier;
+      // Clear cookies for hygiene — they are no longer consulted for validation
       res.clearCookie('oauth_state');
       res.clearCookie('oauth_code_verifier');
 
