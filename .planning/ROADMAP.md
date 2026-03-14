@@ -49,7 +49,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 02-01-PLAN.md — Install Zod 4, create 13 request body schemas, validateBody helper, and unit tests
-- [ ] 02-02-PLAN.md — Wire validation into router.ts and oauth/router.ts, replacing manual guards
+- [x] 02-02-PLAN.md — Wire validation into router.ts and oauth/router.ts, replacing manual guards
 
 ### Phase 3: Structured Logging
 **Goal**: No `console.*` call remains in server code; all log output is structured JSON via an injectable pino instance with sensitive fields redacted
@@ -60,7 +60,10 @@ Plans:
   2. A consumer who passes their own pino instance via `AnonAuthConfig.logger` sees all library log output in their instance — no duplicate logger instances
   3. A consumer who provides no logger sees no log output (default no-op logger); the library does not install a global logger
   4. All `console.log`, `console.error`, and `console.warn` calls are absent from `src/server/` source files
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 03-01-PLAN.md — Install pino, add logger to all config interfaces, thread through createAnonAuth, test scaffold
+- [ ] 03-02-PLAN.md — Replace all console.* calls with pino logger calls, sensitive field audit, complete test suite
 
 ### Phase 4: HTTP Defenses
 **Goal**: All auth and recovery endpoints are protected by rate limiting; state-changing endpoints can be protected by CSRF verification when consumers opt in
@@ -121,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
 | 2. Input Validation | 2/2 | Complete   | 2026-03-14 |
-| 3. Structured Logging | 0/TBD | Not started | - |
+| 3. Structured Logging | 0/2 | Not started | - |
 | 4. HTTP Defenses | 0/TBD | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |
 | 6. Scalability, Tech Debt, and Email | 0/TBD | Not started | - |
