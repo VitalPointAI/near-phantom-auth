@@ -75,7 +75,11 @@ Plans:
   3. When CSRF protection is enabled in config, a state-changing request without a valid CSRF token returns HTTP 403
   4. CSRF protection defaults to disabled; existing consumers who do not set `config.csrf` observe no behavior change
   5. The OAuth callback route is exempt from CSRF verification (OAuth redirects arrive cross-origin and cannot carry a CSRF cookie)
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 04-01-PLAN.md — Install deps, config types, test stubs, wire createAnonAuth forwarding
+- [ ] 04-02-PLAN.md — Implement tiered rate limiting in both routers with tests
+- [ ] 04-03-PLAN.md — Implement opt-in CSRF protection, OAuth exemption, INFRA-05 cookie guard with tests
 
 ### Phase 5: DB Integrity and Functional Stubs
 **Goal**: Registration cannot leave the database in a partial state; wallet recovery linking uses real MPC signing; passkey re-registration and account deletion endpoints exist and work
@@ -125,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
 | 2. Input Validation | 2/2 | Complete   | 2026-03-14 |
 | 3. Structured Logging | 2/2 | Complete   | 2026-03-14 |
-| 4. HTTP Defenses | 0/TBD | Not started | - |
+| 4. HTTP Defenses | 0/3 | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |
 | 6. Scalability, Tech Debt, and Email | 0/TBD | Not started | - |
 | 7. Test Coverage | 0/TBD | Not started | - |
