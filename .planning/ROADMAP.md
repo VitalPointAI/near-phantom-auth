@@ -46,7 +46,10 @@ Plans:
   1. Sending a registration request with a missing or wrong-type field returns `{ "error": "..." }` with HTTP 400, not an unhandled exception or 500
   2. WebAuthn credential response fields with extra unknown browser-extension properties are accepted, not rejected (zod does not use `.strict()` on response fields)
   3. All 16 route handlers have a corresponding zod schema; no route destructures `req.body` without prior validation
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — Install Zod 4, create 13 request body schemas, validateBody helper, and unit tests
+- [ ] 02-02-PLAN.md — Wire validation into router.ts and oauth/router.ts, replacing manual guards
 
 ### Phase 3: Structured Logging
 **Goal**: No `console.*` call remains in server code; all log output is structured JSON via an injectable pino instance with sensitive fields redacted
@@ -117,7 +120,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Atomic Security Fixes | 3/3 | Complete | 2026-03-14 |
-| 2. Input Validation | 0/TBD | Not started | - |
+| 2. Input Validation | 0/2 | Planning | - |
 | 3. Structured Logging | 0/TBD | Not started | - |
 | 4. HTTP Defenses | 0/TBD | Not started | - |
 | 5. DB Integrity and Functional Stubs | 0/TBD | Not started | - |
