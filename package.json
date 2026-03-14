@@ -66,11 +66,13 @@
     "@near-js/types": "^2.5.1",
     "@near-js/utils": "^2.5.1",
     "@simplewebauthn/server": "^13.2.3",
+    "bn.js": "^5.2.3",
     "bs58": "^6.0.0",
     "cookie": "^1.1.1",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@types/bn.js": "^5.2.0",
     "@types/cookie": "^1.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.3.5",
