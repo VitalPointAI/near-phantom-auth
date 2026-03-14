@@ -13,6 +13,7 @@ import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
 import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig } from '../../types/index.js';
+import type { EmailService } from '../email.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
@@ -34,6 +35,8 @@ export interface OAuthRouterConfig {
   rateLimiting?: RateLimitConfig;
   /** Optional CSRF config (Double Submit Cookie) */
   csrf?: CsrfConfig;
+  /** Optional email service for sending recovery passwords */
+  emailService?: EmailService;
 }
 
 export function createOAuthRouter(config: OAuthRouterConfig): Router {
@@ -45,6 +48,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     mpcManager,
     oauthConfig,
     ipfsRecovery,
+    emailService,
   } = config;
 
   // Create rate limiter instance
@@ -315,8 +319,19 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
             createdAt: new Date(),
           });
 
-          // TODO: Send recovery info to user's email
           log.info({ cid }, 'Recovery backup created for new user');
+
+          // Send recovery password to user's email
+          if (emailService && profile.email) {
+            try {
+              await emailService.sendRecoveryPassword(profile.email, recoveryPassword);
+            } catch (emailErr) {
+              // Email failure should not fail the registration
+              log.warn({ err: emailErr }, 'Recovery email send failed — user registered but password not emailed');
+            }
+          } else if (!emailService) {
+            log.info('Email service not configured — recovery password not sent');
+          }
         } catch (error) {
           log.error({ err: error }, 'Failed to create recovery backup');
         }

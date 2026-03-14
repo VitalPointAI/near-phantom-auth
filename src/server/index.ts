@@ -41,6 +41,7 @@ import { createMPCManager, type MPCAccountManager } from './mpc.js';
 import { createWalletRecoveryManager, type WalletRecoveryManager } from './recovery/wallet.js';
 import { createIPFSRecoveryManager, type IPFSRecoveryManager } from './recovery/ipfs.js';
 import { createOAuthManager, type OAuthManager } from './oauth/index.js';
+import { createEmailService, type EmailService } from './email.js';
 import { createOAuthRouter } from './oauth/router.js';
 import { createAuthMiddleware, createRequireAuth } from './middleware.js';
 import { createRouter } from './router.js';
@@ -161,6 +162,12 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     });
   }
 
+  // Create email service (optional)
+  let emailService: EmailService | undefined;
+  if (config.email) {
+    emailService = createEmailService(config.email, logger);
+  }
+
   // Create OAuth manager and router
   let oauthManager: OAuthManager | undefined;
   let oauthRouter: Router | undefined;
@@ -181,6 +188,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       mpcManager,
       oauthConfig: config.oauth,
       ipfsRecovery,
+      emailService,
       logger,
       rateLimiting: config.rateLimiting,
       csrf: config.csrf,
