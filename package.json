@@ -69,7 +69,8 @@
     "bn.js": "^5.2.3",
     "bs58": "^6.0.0",
     "cookie": "^1.1.1",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
