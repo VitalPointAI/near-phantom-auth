@@ -57,11 +57,11 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Unit tests for session signing/verification (`src/server/session.ts`)
+- [x] **TEST-01**: Unit tests for session signing/verification (`src/server/session.ts`)
 - [ ] **TEST-02**: Unit tests for WebAuthn passkey flow (`src/server/passkey.ts`)
 - [ ] **TEST-03**: Unit tests for MPC/borsh serialization and account creation (`src/server/mpc.ts`)
 - [x] **TEST-04**: Unit tests for IPFS encryption/decryption roundtrip (`src/server/recovery/ipfs.ts`)
-- [ ] **TEST-05**: Unit tests for wallet recovery signature verification (`src/server/recovery/wallet.ts`)
+- [x] **TEST-05**: Unit tests for wallet recovery signature verification (`src/server/recovery/wallet.ts`)
 - [x] **TEST-06**: Unit tests for codename generation/validation (`src/server/codename.ts`)
 - [ ] **TEST-07**: Integration tests for registration and authentication flows
 - [ ] **TEST-08**: Integration tests for recovery flows
@@ -124,11 +124,11 @@ Deferred to future release. Tracked but not in current roadmap.
 | PERF-02 | Phase 6 | Complete |
 | EMAIL-01 | Phase 6 | Complete |
 | EMAIL-02 | Phase 6 | Complete |
-| TEST-01 | Phase 7 | Pending |
+| TEST-01 | Phase 7 | Complete |
 | TEST-02 | Phase 7 | Pending |
 | TEST-03 | Phase 7 | Pending |
 | TEST-04 | Phase 7 | Complete |
-| TEST-05 | Phase 7 | Pending |
+| TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Complete |
 | TEST-07 | Phase 7 | Pending |
 | TEST-08 | Phase 7 | Pending |
