@@ -40,6 +40,9 @@ export interface AnonAuthConfig {
   
   /** MPC account configuration */
   mpc?: MPCAccountConfig;
+
+  /** Server-side secret salt for NEAR account derivation. Recommended for production to prevent account ID prediction. */
+  derivationSalt?: string;
 }
 
 export interface MPCAccountConfig {
@@ -51,6 +54,9 @@ export interface MPCAccountConfig {
   fundingAmount?: string;
   /** Account name prefix (default: 'anon') */
   accountPrefix?: string;
+
+  /** Server-side secret salt for NEAR account derivation (forwarded from AnonAuthConfig) */
+  derivationSalt?: string;
 }
 
 export interface OAuthConfig {
@@ -148,6 +154,10 @@ export interface DatabaseAdapter {
   // Recovery
   storeRecoveryData(data: RecoveryData): Promise<void>;
   getRecoveryData(userId: string, type: RecoveryType): Promise<RecoveryData | null>;
+
+  // Optional: update session expiry without full session replacement.
+  // If not implemented, session refresh falls back to cookie-only behavior.
+  updateSessionExpiry?(sessionId: string, newExpiresAt: Date): Promise<void>;
 }
 
 // ============================================
