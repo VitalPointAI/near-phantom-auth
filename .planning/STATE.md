@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-14T15:31:38.391Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-14T16:34:43.016Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 10
+  completed_plans: 8
   percent: 100
 ---
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 02 P02 | 7 | 2 tasks | 2 files |
 | Phase 03-structured-logging P01 | 6 | 2 tasks | 14 files |
 | Phase 03-structured-logging P02 | 6 | 2 tasks | 11 files |
+| Phase 04-http-defenses P01 | 8 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase 03-01]: Child loggers with module binding created in each factory — Plan 02 can use log.* directly without any plumbing changes
 - [Phase 03-structured-logging]: fundAccountFromTreasury accepts log Logger parameter — standalone module-level functions needing logging receive logger from caller rather than a silent fallback
 - [Phase 03-structured-logging]: webauthn.ts and wallet.ts use module-level pino silent loggers — standalone exported functions not created via factory use pino({ level: 'silent' }) with no consumer override path
+- [Phase 04-http-defenses]: express-rate-limit, csrf-csrf, cookie-parser externalized in tsup.config.ts — middleware deps consumed by library users
+- [Phase 04-http-defenses]: RateLimitConfig and CsrfConfig defined before implementation — Plans 02 and 03 can implement without any type/setup work
+- [Phase 04-http-defenses]: Test stubs created with it.todo placeholders — suite runs green with 19 todos, clean scaffolding for Plans 02 and 03
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T15:24:34.667Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-14T16:34:43.013Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None

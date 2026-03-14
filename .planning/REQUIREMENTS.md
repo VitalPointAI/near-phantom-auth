@@ -10,8 +10,8 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 ### Security
 
 - [x] **SEC-01**: Session signature verification uses constant-time comparison (`crypto.timingSafeEqual`)
-- [ ] **SEC-02**: All auth and recovery endpoints have rate limiting (stricter limits on recovery)
-- [ ] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
+- [x] **SEC-02**: All auth and recovery endpoints have rate limiting (stricter limits on recovery)
+- [x] **SEC-03**: CSRF token verification for state-changing endpoints when sameSite is not strict
 - [x] **SEC-04**: Account derivation uses server-side secret salt to prevent account ID prediction
 - [x] **SEC-05**: All endpoint request bodies validated at runtime with zod schemas
 - [x] **SEC-06**: Sensitive data (treasury keys, derivation paths, MPC public keys) redacted from production logs
@@ -36,7 +36,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [ ] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
 - [ ] **INFRA-03**: OAuth state stored in database instead of in-memory Map
 - [ ] **INFRA-04**: Automatic expired session and challenge cleanup mechanism
-- [ ] **INFRA-05**: Explicit cookie-parser dependency check in OAuth callback
+- [x] **INFRA-05**: Explicit cookie-parser dependency check in OAuth callback
 
 ### Tech Debt
 
@@ -98,8 +98,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SEC-01 | Phase 1 | Complete |
-| SEC-02 | Phase 4 | Pending |
-| SEC-03 | Phase 4 | Pending |
+| SEC-02 | Phase 4 | Complete |
+| SEC-03 | Phase 4 | Complete |
 | SEC-04 | Phase 1 | Complete |
 | SEC-05 | Phase 2 | Complete — 02-01 |
 | SEC-06 | Phase 3 | Complete |
@@ -115,7 +115,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | INFRA-02 | Phase 5 | Pending |
 | INFRA-03 | Phase 6 | Pending |
 | INFRA-04 | Phase 6 | Pending |
-| INFRA-05 | Phase 4 | Pending |
+| INFRA-05 | Phase 4 | Complete |
 | DEBT-01 | Phase 6 | Pending |
 | DEBT-02 | Phase 1 | Complete |
 | DEBT-03 | Phase 6 | Pending |
