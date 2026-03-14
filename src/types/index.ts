@@ -195,6 +195,16 @@ export interface DatabaseAdapter {
   // Optional: update session expiry without full session replacement.
   // If not implemented, session refresh falls back to cookie-only behavior.
   updateSessionExpiry?(sessionId: string, newExpiresAt: Date): Promise<void>;
+
+  /** Optional: wrap multiple operations in a database transaction.
+   *  If not implemented, operations execute sequentially (no atomicity guarantee). */
+  transaction?<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T>;
+
+  /** Optional: delete a user by ID. Passkeys cascade via FK; sessions and recovery must be deleted first. */
+  deleteUser?(userId: string): Promise<void>;
+
+  /** Optional: delete all recovery data for a user. */
+  deleteRecoveryData?(userId: string): Promise<void>;
 }
 
 // ============================================

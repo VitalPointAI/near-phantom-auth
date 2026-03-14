@@ -121,19 +121,186 @@ CREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provide
 
 /**
  * Create PostgreSQL adapter
- * 
+ *
  * Note: Requires 'pg' package to be installed by the consuming application
  */
 export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
   // Dynamic import of pg to make it optional
   let pool: import('pg').Pool | null = null;
-  
+
   async function getPool(): Promise<import('pg').Pool> {
     if (!pool) {
       const { Pool } = await import('pg');
       pool = new Pool({ connectionString: config.connectionString });
     }
     return pool;
+  }
+
+  /**
+   * Build a client-scoped DatabaseAdapter that routes queries through a transaction client.
+   * Only implements the methods used during the registration transaction flow.
+   * Other methods throw to prevent accidental out-of-transaction usage.
+   */
+  function buildClientAdapter(client: import('pg').PoolClient): DatabaseAdapter {
+    return {
+      async initialize(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async createUser(input: CreateUserInput): Promise<AnonUser> {
+        const result = await client.query(
+          `INSERT INTO anon_users (codename, near_account_id, mpc_public_key, derivation_path)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, codename, near_account_id, mpc_public_key, derivation_path, created_at, last_active_at`,
+          [input.codename, input.nearAccountId, input.mpcPublicKey, input.derivationPath]
+        );
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          type: 'anonymous' as const,
+          codename: row.codename,
+          nearAccountId: row.near_account_id,
+          mpcPublicKey: row.mpc_public_key,
+          derivationPath: row.derivation_path,
+          createdAt: row.created_at,
+          lastActiveAt: row.last_active_at,
+        };
+      },
+
+      async getUserById(): Promise<AnonUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getUserByCodename(): Promise<AnonUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getUserByNearAccount(): Promise<AnonUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async createOAuthUser(): Promise<OAuthUser> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getOAuthUserById(): Promise<OAuthUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getOAuthUserByEmail(): Promise<OAuthUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getOAuthUserByProvider(): Promise<OAuthUser | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async linkOAuthProvider(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async createPasskey(input: CreatePasskeyInput): Promise<Passkey> {
+        await client.query(
+          `INSERT INTO anon_passkeys (credential_id, user_id, public_key, counter, device_type, backed_up, transports)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            input.credentialId,
+            input.userId,
+            input.publicKey,
+            input.counter,
+            input.deviceType,
+            input.backedUp,
+            input.transports || null,
+          ]
+        );
+        return {
+          ...input,
+          createdAt: new Date(),
+        };
+      },
+
+      async getPasskeyById(): Promise<Passkey | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getPasskeysByUserId(): Promise<Passkey[]> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async updatePasskeyCounter(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async deletePasskey(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async createSession(input: CreateSessionInput & { id?: string }): Promise<Session> {
+        const result = await client.query(
+          `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
+           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
+           RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+          [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+        );
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          expiresAt: row.expires_at,
+          lastActivityAt: row.last_activity_at,
+          ipAddress: row.ip_address,
+          userAgent: row.user_agent,
+        };
+      },
+
+      async getSession(): Promise<Session | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async deleteSession(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async deleteUserSessions(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async cleanExpiredSessions(): Promise<number> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async storeChallenge(challenge: Challenge): Promise<void> {
+        await client.query(
+          `INSERT INTO anon_challenges (id, challenge, type, user_id, expires_at, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            challenge.id,
+            challenge.challenge,
+            challenge.type,
+            challenge.userId || null,
+            challenge.expiresAt,
+            challenge.metadata ? JSON.stringify(challenge.metadata) : null,
+          ]
+        );
+      },
+
+      async getChallenge(): Promise<Challenge | null> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async deleteChallenge(challengeId: string): Promise<void> {
+        await client.query('DELETE FROM anon_challenges WHERE id = $1', [challengeId]);
+      },
+
+      async storeRecoveryData(): Promise<void> {
+        throw new Error('Not available in transaction context');
+      },
+
+      async getRecoveryData(): Promise<RecoveryData | null> {
+        throw new Error('Not available in transaction context');
+      },
+    };
   }
 
   return {
@@ -602,9 +769,9 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
         'SELECT * FROM anon_recovery WHERE user_id = $1 AND type = $2',
         [userId, type]
       );
-      
+
       if (result.rows.length === 0) return null;
-      
+
       const row = result.rows[0];
       return {
         userId: row.user_id,
@@ -612,6 +779,35 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
         reference: row.reference,
         createdAt: row.created_at,
       };
+    },
+
+    async transaction<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> {
+      const p = await getPool();
+      const client = await p.connect();
+      try {
+        await client.query('BEGIN');
+        const txAdapter = buildClientAdapter(client);
+        const result = await fn(txAdapter);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async deleteUser(userId: string): Promise<void> {
+      const p = await getPool();
+      // Passkeys cascade via FK (anon_passkeys.user_id REFERENCES anon_users(id) ON DELETE CASCADE).
+      // Caller must delete sessions and recovery data before calling this.
+      await p.query('DELETE FROM anon_users WHERE id = $1', [userId]);
+    },
+
+    async deleteRecoveryData(userId: string): Promise<void> {
+      const p = await getPool();
+      await p.query('DELETE FROM anon_recovery WHERE user_id = $1', [userId]);
     },
   };
 }
