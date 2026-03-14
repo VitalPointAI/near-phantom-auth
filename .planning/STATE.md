@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-14T20:23:21.048Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-14T20:24:20.982Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 17
-  completed_plans: 14
+  completed_plans: 15
   percent: 100
 ---
 
@@ -63,6 +63,7 @@ Progress: [██████████] 100%
 | Phase 05 P02 | 8 | 2 tasks | 1 files |
 | Phase 05-db-integrity-and-functional-stubs P03 | 15 | 2 tasks | 3 files |
 | Phase 06-scalability-tech-debt-and-email P02 | 3 | 2 tasks | 4 files |
+| Phase 06-scalability-tech-debt-and-email P03 | 224 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,9 @@ Recent decisions affecting current work:
 - [Phase 06-02]: isValidCodename NATO pattern uses optional second word segment (?:-[A-Z]+)? — accepts both ALPHA-7 (legacy) and ALPHA-BRAVO-42 (new)
 - [Phase 06-02]: Promise.any() with no AbortController in fetchFromIPFS — consumers needing timeouts use config.customFetch per PERF-02 spec
 - [Phase 06-02]: createTestnetAccount deleted after zero call sites confirmed — testnet helper API was dead code
+- [Phase 06-03]: EmailService is optional — absence means graceful skip with info log (BUG-05 satisfied)
+- [Phase 06-03]: Email failure is isolated from registration — caught separately, logs warn, does not throw
+- [Phase 06-03]: @aws-sdk/client-ses externalized in tsup — library consumers provide their own SES dependency
 
 ### Pending Todos
 
@@ -121,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T20:23:21.043Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-14T20:24:20.979Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None

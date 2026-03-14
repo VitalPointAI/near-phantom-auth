@@ -22,7 +22,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [x] **BUG-02**: Signed transaction format includes public key in signature wrapper
 - [x] **BUG-03**: Session refresh updates `expiresAt` in database (not just cookie)
 - [x] **BUG-04**: `verifyRecoveryWallet()` checks specific wallet public key against access key list
-- [ ] **BUG-05**: OAuth recovery password either delivered to user via email or auto-recovery skipped until email works
+- [x] **BUG-05**: OAuth recovery password either delivered to user via email or auto-recovery skipped until email works
 
 ### Stubs & Incomplete
 
@@ -52,8 +52,8 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 ### Email Integration
 
-- [ ] **EMAIL-01**: AWS SES integration for email delivery
-- [ ] **EMAIL-02**: OAuth recovery password delivered to user via email after SES integration
+- [x] **EMAIL-01**: AWS SES integration for email delivery
+- [x] **EMAIL-02**: OAuth recovery password delivered to user via email after SES integration
 
 ### Testing
 
@@ -107,7 +107,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | BUG-02 | Phase 1 | Complete |
 | BUG-03 | Phase 1 | Complete |
 | BUG-04 | Phase 5 | Complete |
-| BUG-05 | Phase 6 | Pending |
+| BUG-05 | Phase 6 | Complete |
 | STUB-01 | Phase 5 | Complete |
 | STUB-02 | Phase 5 | Complete |
 | STUB-03 | Phase 5 | Complete |
@@ -122,8 +122,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | DEBT-04 | Phase 6 | Complete |
 | PERF-01 | Phase 6 | Pending |
 | PERF-02 | Phase 6 | Complete |
-| EMAIL-01 | Phase 6 | Pending |
-| EMAIL-02 | Phase 6 | Pending |
+| EMAIL-01 | Phase 6 | Complete |
+| EMAIL-02 | Phase 6 | Complete |
 | TEST-01 | Phase 7 | Pending |
 | TEST-02 | Phase 7 | Pending |
 | TEST-03 | Phase 7 | Pending |
