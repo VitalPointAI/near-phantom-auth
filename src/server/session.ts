@@ -5,7 +5,7 @@
  * Sessions are stored server-side (database) with secure cookie reference.
  */
 
-import { randomUUID, createHmac } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import type { Response, Request } from 'express';
 import type { Session, CreateSessionInput, DatabaseAdapter } from '../types/index.js';
 
@@ -59,13 +59,17 @@ function signSessionId(sessionId: string, secret: string): string {
 function verifySessionId(signedValue: string, secret: string): string | null {
   const parts = signedValue.split('.');
   if (parts.length !== 2) return null;
-  
+
   const [sessionId, signature] = parts;
   const expectedSignature = createHmac('sha256', secret)
     .update(sessionId)
     .digest('base64url');
-  
-  if (signature !== expectedSignature) return null;
+
+  const sigBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (sigBuffer.length !== expectedBuffer.length) return null;
+  if (!timingSafeEqual(sigBuffer, expectedBuffer)) return null;
   return sessionId;
 }
 
@@ -96,6 +100,7 @@ export function createSessionManager(
   config: SessionConfig
 ): SessionManager {
   const cookieName = config.cookieName || SESSION_COOKIE_NAME;
+  let warnedNoUpdateSessionExpiry = false;
   const durationMs = config.durationMs || DEFAULT_SESSION_DURATION_MS;
   const isProduction = process.env.NODE_ENV === 'production';
   
@@ -191,9 +196,16 @@ export function createSessionManager(
       if (elapsed > lifetime * 0.5) {
         // Extend session
         const newExpiresAt = new Date(now + durationMs);
-        
-        // Update in database would happen here
-        // For now, just update cookie
+
+        if (db.updateSessionExpiry) {
+          await db.updateSessionExpiry(session.id, newExpiresAt);
+        } else if (!warnedNoUpdateSessionExpiry) {
+          console.warn(
+            '[near-phantom-auth] Session refresh is cookie-only — implement updateSessionExpiry on your adapter for full persistence.'
+          );
+          warnedNoUpdateSessionExpiry = true;
+        }
+
         const signedId = signSessionId(session.id, config.secret);
         
         res.cookie(cookieName, signedId, {

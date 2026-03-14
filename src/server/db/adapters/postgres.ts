@@ -537,6 +537,14 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
       return result.rowCount || 0;
     },
 
+    async updateSessionExpiry(sessionId: string, newExpiresAt: Date): Promise<void> {
+      const p = await getPool();
+      await p.query(
+        'UPDATE anon_sessions SET expires_at = $1 WHERE id = $2',
+        [newExpiresAt, sessionId]
+      );
+    },
+
     async storeChallenge(challenge: Challenge): Promise<void> {
       const p = await getPool();
       await p.query(
