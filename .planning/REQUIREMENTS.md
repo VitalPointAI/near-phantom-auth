@@ -63,8 +63,8 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [x] **TEST-04**: Unit tests for IPFS encryption/decryption roundtrip (`src/server/recovery/ipfs.ts`)
 - [x] **TEST-05**: Unit tests for wallet recovery signature verification (`src/server/recovery/wallet.ts`)
 - [x] **TEST-06**: Unit tests for codename generation/validation (`src/server/codename.ts`)
-- [ ] **TEST-07**: Integration tests for registration and authentication flows
-- [ ] **TEST-08**: Integration tests for recovery flows
+- [x] **TEST-07**: Integration tests for registration and authentication flows
+- [x] **TEST-08**: Integration tests for recovery flows
 
 ## v2 Requirements
 
@@ -130,8 +130,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-04 | Phase 7 | Complete |
 | TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Complete |
-| TEST-07 | Phase 7 | Pending |
-| TEST-08 | Phase 7 | Pending |
+| TEST-07 | Phase 7 | Complete |
+| TEST-08 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 35 total

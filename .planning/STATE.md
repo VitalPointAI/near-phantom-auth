@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-03-14T22:57:00Z"
-last_activity: 2026-03-14 — Phase 07 Plan 03 complete — passkey, MPC addRecoveryWallet, and db-integrity tests (TEST-02, TEST-03)
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-03-14T19:03:20Z"
+last_activity: 2026-03-14 — Phase 07 Plan 04 complete — registration/auth and recovery integration tests (TEST-07, TEST-08); 207 tests passing
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 21
-  completed_plans: 20
-  percent: 95
+  completed_plans: 21
+  percent: 100
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 7 of 7 (Test Coverage)
-Plan: 3 of 4 in current phase
-Status: Phase 07 Plan 03 complete — passkey lifecycle tests, addRecoveryWallet fetch-level tests, db-integrity stubs implemented
-Last activity: 2026-03-14 — Phase 07 Plan 03 complete — TEST-02 and TEST-03 satisfied; 171 tests passing
+Plan: 4 of 4 in current phase — ALL PLANS COMPLETE
+Status: Phase 07 Plan 04 complete — registration/auth and recovery integration tests added
+Last activity: 2026-03-14 — Phase 07 Plan 04 complete — TEST-07 and TEST-08 satisfied; 207 tests passing (all 14 test files)
 
 Progress: [██████████] 100%
 
@@ -68,6 +68,7 @@ Progress: [██████████] 100%
 | Phase 06-scalability-tech-debt-and-email P04 | 8 | 2 tasks | 2 files |
 | Phase 07-test-coverage P01 | 4 | 2 tasks | 2 files |
 | Phase 07-test-coverage P02 | 7 | 2 tasks | 1 files |
+| Phase 07-test-coverage P04 | 4 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ Recent decisions affecting current work:
 - [Phase 06-04]: createCleanupScheduler is standalone export, not embedded in AnonAuthInstance — composable pattern
 - [Phase 06-04]: handle.unref() called immediately after setInterval — prevents timer from blocking process exit
 - [Phase 06-04]: cleanExpiredChallenges and cleanExpiredOAuthStates optional-chained with ?? 0 — custom adapters without these methods still work
+- [Phase 07-04]: Mock sessionManager.getSession directly to simulate authenticated state — avoids cookie encoding complexity; standard integration test pattern for this codebase
+- [Phase 07-04]: High rate limits (1000 req/window) in integration test createRouter config — prevents limiter interference with test assertions
+- [Phase 07-04]: Re-apply mock return values after vi.clearAllMocks() in beforeEach — clearAllMocks resets implementations, not just call counts
 - [Phase 07-03]: vi.clearAllMocks() in beforeEach + re-apply mocked values ensures passkey test isolation between describe blocks
 - [Phase 07-03]: INFRA-02 transaction rollback test uses separate txAdapter in db.transaction callback mock — correctly isolates inner adapter behavior
 - [Phase 07-03]: addRecoveryWallet tests use nacl.sign.keyPair() real ed25519 treasury key + fetch-level mocking (not manager stub) for STUB-01 coverage
@@ -142,6 +146,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T22:55:52.924Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-14T19:03:20Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
