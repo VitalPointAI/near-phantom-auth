@@ -144,12 +144,14 @@ Plans:
   2. `cookieParser()` is mounted unconditionally in the OAuth router — OAuth callback works regardless of CSRF configuration
   3. DB-stored OAuth state is consumed and atomically deleted during callback (replay protection works)
   4. Tests verify DB-backed state validation and cookieParser availability without CSRF
-**Plans**: 0 plans
+**Plans**: 1 plans
+Plans:
+- [ ] 08-01-PLAN.md — Wire DB-backed validateState() into OAuth callback, mount cookieParser unconditionally, add tests
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -160,4 +162,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. DB Integrity and Functional Stubs | 3/3 | Complete   | 2026-03-14 |
 | 6. Scalability, Tech Debt, and Email | 4/4 | Complete   | 2026-03-14 |
 | 7. Test Coverage | 4/4 | Complete   | 2026-03-14 |
-| 8. Wire OAuth Callback to DB-Backed State Validation | 0/0 | Not Started | — |
+| 8. Wire OAuth Callback to DB-Backed State Validation | 0/1 | Not Started | — |
