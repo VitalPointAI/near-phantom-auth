@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-14T16:41:21.194Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-14T16:46:31.693Z"
 last_activity: 2026-03-14 — Phase 02 Plan 02 complete — route validation wiring (SEC-05 satisfied)
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -58,6 +58,7 @@ Progress: [██████████] 100%
 | Phase 03-structured-logging P02 | 6 | 2 tasks | 11 files |
 | Phase 04-http-defenses P01 | 8 | 2 tasks | 9 files |
 | Phase 04-http-defenses P02 | 5 | 2 tasks | 4 files |
+| Phase 04-http-defenses P03 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,9 @@ Recent decisions affecting current work:
 - [Phase 04-http-defenses]: RateLimitConfig and CsrfConfig defined before implementation — Plans 02 and 03 can implement without any type/setup work
 - [Phase 04-http-defenses]: Test stubs created with it.todo placeholders — suite runs green with 19 todos, clean scaffolding for Plans 02 and 03
 - [Phase 04-http-defenses]: Separate limiter instances per router (router.ts vs oauth/router.ts) — independent per-IP counters; intentional isolation
+- [Phase 04-http-defenses]: getCsrfTokenFromRequest replaces getTokenFromRequest; generateCsrfToken replaces generateToken; getSessionIdentifier uses req.ip (csrf-csrf v4 renamed API)
+- [Phase 04-http-defenses]: skipCsrfProtection regex is ^\/[^/]+\/callback$ — req.path is relative to sub-router mount point
+- [Phase 04-http-defenses]: INFRA-05 guard fires regardless of CSRF setting — consumer may disable CSRF but also forget cookie-parser
 
 ### Pending Todos
 
@@ -104,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T16:41:21.192Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-14T16:46:31.690Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
