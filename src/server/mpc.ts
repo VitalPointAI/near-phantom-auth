@@ -91,34 +91,6 @@ async function accountExists(
 }
 
 /**
- * Create NEAR account on testnet using helper API
- */
-async function createTestnetAccount(accountId: string): Promise<string> {
-  // Generate a random keypair for initial account access
-  const seed = randomBytes(32);
-  const publicKeyBytes = derivePublicKey(seed);
-  const publicKey = `ed25519:${bs58.encode(publicKeyBytes)}`;
-
-  const helperUrl = 'https://helper.testnet.near.org/account';
-
-  const response = await fetch(helperUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      newAccountId: accountId,
-      newAccountPublicKey: publicKey,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Testnet helper error: ${response.status} - ${errorText}`);
-  }
-
-  return publicKey;
-}
-
-/**
  * Generate a deterministic account name from user ID
  */
 function generateAccountName(userId: string, prefix: string): string {

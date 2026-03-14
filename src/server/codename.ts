@@ -44,12 +44,13 @@ function randomPick<T>(array: T[]): T {
 }
 
 /**
- * Generate NATO phonetic codename (e.g., ALPHA-7, BRAVO-42)
+ * Generate NATO phonetic codename (e.g., ALPHA-BRAVO-42)
  */
 export function generateNatoCodename(): string {
-  const word = randomPick(NATO_PHONETIC);
+  const word1 = randomPick(NATO_PHONETIC);
+  const word2 = randomPick(NATO_PHONETIC);
   const num = randomSuffix();
-  return `${word}-${num}`;
+  return `${word1}-${word2}-${num}`;
 }
 
 /**
@@ -80,10 +81,10 @@ export function generateCodename(style: CodenameStyle = 'nato-phonetic'): string
  * Check if a codename format is valid
  */
 export function isValidCodename(codename: string): boolean {
-  // NATO: WORD-NN
-  const natoPattern = /^[A-Z]+-\d{1,2}$/;
+  // NATO: WORD-NN (legacy) or WORD-WORD-NN (new compound)
+  const natoPattern = /^[A-Z]+(?:-[A-Z]+)?-\d{1,2}$/;
   // Animal: WORD-WORD-NN
   const animalPattern = /^[A-Z]+-[A-Z]+-\d{1,2}$/;
-  
+
   return natoPattern.test(codename) || animalPattern.test(codename);
 }

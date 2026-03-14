@@ -80,6 +80,19 @@ export interface AnonAuthConfig {
 
   /** Optional CSRF protection (Double Submit Cookie). Disabled by default. */
   csrf?: CsrfConfig;
+
+  /** AWS SES email configuration for sending recovery passwords to OAuth users.
+   *  When absent, recovery passwords are not emailed (backup still created). */
+  email?: {
+    /** AWS SES region (e.g., 'us-east-1') */
+    region: string;
+    /** AWS access key ID (optional — uses instance profile if omitted) */
+    accessKeyId?: string;
+    /** AWS secret access key (required when accessKeyId is provided) */
+    secretAccessKey?: string;
+    /** Verified sender email address or domain identity in SES */
+    fromAddress: string;
+  };
 }
 
 export interface MPCAccountConfig {
@@ -120,7 +133,7 @@ export interface OAuthConfig {
 }
 
 export interface DatabaseConfig {
-  type: 'postgres' | 'sqlite' | 'custom';
+  type: 'postgres' | 'custom';
   connectionString?: string;
   /** Custom adapter for database operations */
   adapter?: DatabaseAdapter;
@@ -205,6 +218,30 @@ export interface DatabaseAdapter {
 
   /** Optional: delete all recovery data for a user. */
   deleteRecoveryData?(userId: string): Promise<void>;
+
+  /** Optional: store OAuth state for cross-instance durability. */
+  storeOAuthState?(state: OAuthStateRecord): void | Promise<void>;
+  /** Optional: retrieve and consume OAuth state by state key. */
+  getOAuthState?(stateKey: string): Promise<OAuthStateRecord | null>;
+  /** Optional: delete OAuth state (consumed or expired). */
+  deleteOAuthState?(stateKey: string): Promise<void>;
+  /** Optional: clean expired WebAuthn challenges. Returns count deleted. */
+  cleanExpiredChallenges?(): Promise<number>;
+  /** Optional: clean expired OAuth states. Returns count deleted. */
+  cleanExpiredOAuthStates?(): Promise<number>;
+}
+
+// ============================================
+// OAuth State Record (for DB-backed state storage)
+// ============================================
+
+/** Minimal OAuth state record stored in the database to enable cross-instance durability. */
+export interface OAuthStateRecord {
+  provider: string;
+  state: string;
+  codeVerifier?: string;
+  redirectUri: string;
+  expiresAt: Date;
 }
 
 // ============================================
