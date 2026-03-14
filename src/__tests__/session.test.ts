@@ -6,6 +6,7 @@
  */
 
 import { describe, it, vi, beforeEach } from 'vitest';
+import pino from 'pino';
 import { createSessionManager } from '../server/session.js';
 import type { DatabaseAdapter, Session, CreateSessionInput } from '../types/index.js';
 
@@ -262,9 +263,13 @@ describe('refreshSession - BUG-03', () => {
   });
 
   it('logs warning once on fallback, not on every call', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnMessages: string[] = [];
+    const stream = { write: (msg: string) => {
+      const entry = JSON.parse(msg);
+      if (entry.level === 40) warnMessages.push(entry.msg); // 40 = warn level in pino
+    }};
+    const logger = pino({ level: 'warn' }, stream as any);
 
-    const dotIdx2 = 0; // placeholder
     const sessionId = 'test-session-123';
 
     const backdatedSession = {
@@ -288,6 +293,7 @@ describe('refreshSession - BUG-03', () => {
     const manager = createSessionManager(dbNoExpiry, {
       secret: TEST_SECRET,
       durationMs: 2000,
+      logger,
     });
 
     const mockReq = makeMockReq(`${COOKIE_NAME}=${encodeURIComponent(signedCookie)}`);
@@ -297,11 +303,9 @@ describe('refreshSession - BUG-03', () => {
     await manager.refreshSession(mockReq as never, makeMockRes() as never);
 
     // Warning should be logged at most once per manager instance
-    const warnCalls = warnSpy.mock.calls.filter(args =>
-      typeof args[0] === 'string' && args[0].includes('Session refresh is cookie-only')
+    const cookieOnlyWarnings = warnMessages.filter(msg =>
+      msg.includes('Session refresh is cookie-only')
     );
-    expect(warnCalls.length).toBe(1);
-
-    warnSpy.mockRestore();
+    expect(cookieOnlyWarnings.length).toBe(1);
   });
 });
