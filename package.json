@@ -55,7 +55,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jim-agent/near-phantom-auth.git"
+    "url": "git+https://github.com/VitalPointAI/near-phantom-auth.git"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1009.0",
