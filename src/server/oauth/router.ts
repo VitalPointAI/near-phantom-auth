@@ -37,6 +37,8 @@ export interface OAuthRouterConfig {
   csrf?: CsrfConfig;
   /** Optional email service for sending recovery passwords */
   emailService?: EmailService;
+  /** Optional pre-created OAuthManager instance. If omitted, one is created internally. */
+  oauthManager?: OAuthManager;
 }
 
 export function createOAuthRouter(config: OAuthRouterConfig): Router {
@@ -95,8 +97,8 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     log.info('CSRF protection enabled for OAuth router (callback exempt)');
   }
 
-  // Create OAuth manager
-  const oauthManager = createOAuthManager(
+  // Use injected OAuthManager or create one
+  const oauthManager = config.oauthManager ?? createOAuthManager(
     {
       google: oauthConfig.google,
       github: oauthConfig.github,

@@ -140,7 +140,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     treasuryAccount: config.mpc?.treasuryAccount,
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
     fundingAmount: config.mpc?.fundingAmount,
-    derivationSalt: config.mpc?.derivationSalt,
+    derivationSalt: config.mpc?.derivationSalt ?? config.derivationSalt,
     logger,
   });
 
@@ -192,6 +192,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       logger,
       rateLimiting: config.rateLimiting,
       csrf: config.csrf,
+      oauthManager,
     });
   }
 

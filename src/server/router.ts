@@ -425,7 +425,7 @@ export function createRouter(config: RouterConfig): Router {
 
         const { signature, challenge, walletAccountId } = body;
 
-        const { verified, walletId } = walletRecovery.verifyLinkSignature(
+        const { verified } = walletRecovery.verifyLinkSignature(
           signature,
           challenge
         );
