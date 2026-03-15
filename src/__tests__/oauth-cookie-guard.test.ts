@@ -34,6 +34,8 @@ function makeMockDb(): DatabaseAdapter & {
   getOAuthState: ReturnType<typeof vi.fn>;
   deleteOAuthState: ReturnType<typeof vi.fn>;
   storeOAuthState: ReturnType<typeof vi.fn>;
+  getOAuthUserByProvider: ReturnType<typeof vi.fn>;
+  getOAuthUserByEmail: ReturnType<typeof vi.fn>;
 } {
   return {
     // OAuth state methods — backed by vi.fn() for test control
@@ -51,6 +53,8 @@ function makeMockDb(): DatabaseAdapter & {
     getOAuthState: ReturnType<typeof vi.fn>;
     deleteOAuthState: ReturnType<typeof vi.fn>;
     storeOAuthState: ReturnType<typeof vi.fn>;
+    getOAuthUserByProvider: ReturnType<typeof vi.fn>;
+    getOAuthUserByEmail: ReturnType<typeof vi.fn>;
   };
 }
 

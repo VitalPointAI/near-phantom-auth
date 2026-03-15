@@ -66,7 +66,6 @@ const MOCK_PASSKEY: Passkey = {
   backedUp: false,
   transports: ['internal'],
   createdAt: new Date(),
-  lastUsedAt: new Date(),
 };
 
 function makeMockDb(overrides: Partial<DatabaseAdapter> = {}): DatabaseAdapter {
