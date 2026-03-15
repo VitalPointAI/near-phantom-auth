@@ -34,7 +34,7 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 
 - [x] **INFRA-01**: Structured logging replaces all console.log/error statements (pino or similar)
 - [x] **INFRA-02**: Registration flow wrapped in database transaction (no partial user creation)
-- [ ] **INFRA-03**: OAuth state stored in database instead of in-memory Map
+- [x] **INFRA-03**: OAuth state stored in database instead of in-memory Map
 - [x] **INFRA-04**: Automatic expired session and challenge cleanup mechanism
 - [x] **INFRA-05**: Explicit cookie-parser dependency check in OAuth callback
 
@@ -113,7 +113,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | STUB-03 | Phase 5 | Complete |
 | INFRA-01 | Phase 3 | Complete |
 | INFRA-02 | Phase 5 | Complete |
-| INFRA-03 | Phase 8 | Pending |
+| INFRA-03 | Phase 8 | Complete |
 | INFRA-04 | Phase 6 | Complete |
 | INFRA-05 | Phase 4 | Complete |
 | DEBT-01 | Phase 6 | Complete |

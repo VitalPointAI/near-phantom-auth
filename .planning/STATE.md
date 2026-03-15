@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: milestone
 status: completed
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-03-14T23:09:31.513Z"
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-15T00:00:32.175Z"
 last_activity: 2026-03-14 — Phase 07 Plan 04 complete — TEST-07 and TEST-08 satisfied; 207 tests passing (all 14 test files)
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 21
-  completed_plans: 21
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 22
+  completed_plans: 22
   percent: 100
 ---
 
@@ -69,6 +69,7 @@ Progress: [██████████] 100%
 | Phase 07-test-coverage P01 | 4 | 2 tasks | 2 files |
 | Phase 07-test-coverage P02 | 7 | 2 tasks | 1 files |
 | Phase 07-test-coverage P04 | 4 | 2 tasks | 2 files |
+| Phase 08-wire-oauth-callback-db-state P01 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,8 @@ Recent decisions affecting current work:
 - [Phase 07-01]: Statistical uniqueness check: 50 samples expect >=40 unique (collision space is 50k+ for codenames)
 - [Phase 07-02]: session.test.ts adversarial coverage was already complete — tampered, truncated, and extended cookie cases all verified green without modification
 - [Phase 07-02]: Adversarial unrelated-key case tested by: creating valid sig with keypair A, mocking RPC to return UNKNOWN_ACCESS_KEY error, asserting checkWalletAccess returns false
+- [Phase 08-wire-oauth-callback-db-state]: cookieParser mounted unconditionally inside createOAuthRouter — consumers no longer need external mount; INFRA-05 guard retained as defense-in-depth for sub-app isolation edge cases
+- [Phase 08-wire-oauth-callback-db-state]: oauthState.codeVerifier from DB record replaces req.cookies?.oauth_code_verifier in callback — codeVerifier is now sourced from DB-backed state for PKCE token exchange
 
 ### Pending Todos
 
@@ -146,6 +149,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-14T19:03:20Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-03-15T00:00:32.172Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
