@@ -161,19 +161,131 @@ describe('mock factory sanity (PRF-11 baseline)', () => {
 // Placeholders — bodies filled by Plan 02 and Plan 03
 // ---------------------------------------------------------------------------
 
-describe('createPasskey PRF extraction (PRF-02, PRF-04, PRF-05) — filled by Plan 02', () => {
-  it.todo('includes extensions.prf.eval.first in navigator.credentials.create publicKey options');
-  it.todo('returns 64-char lowercase hex sealingKeyHex for 32-byte PRF output');
-  it.todo('returns undefined sealingKeyHex when ext.prf.results.first is absent');
-  it.todo('same credKey + same salt → identical sealingKeyHex (determinism)');
-  it.todo('different credKey → different sealingKeyHex (divergence)');
-  it.todo('same credKey + different salt → different sealingKeyHex (divergence)');
+describe('createPasskey PRF extraction (PRF-02, PRF-04, PRF-05, PRF-11)', () => {
+  const salt = new TextEncoder().encode('near-phantom-auth-prf-v1');
+  const minimalCreateOptions = {
+    challenge: 'Y2hhbGxlbmdl',
+    rp: { name: 'Test', id: 'localhost' },
+    user: { id: 'dXNlcjE', name: 'user1', displayName: 'user1' },
+    pubKeyCredParams: [{ alg: -7, type: 'public-key' as const }],
+  };
+
+  it('includes extensions.prf.eval.first in navigator.credentials.create publicKey options', async () => {
+    const credKey = Buffer.alloc(32, 0x11);
+    vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential,
+    );
+    const { createPasskey } = await import('../client/passkey.js');
+    await createPasskey(minimalCreateOptions, { salt });
+    const createFn = globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>;
+    const arg = createFn.mock.calls[0][0];
+    expect(arg.publicKey.extensions?.prf?.eval?.first).toBe(salt);
+  });
+
+  it('does NOT set extensions when prfOptions is omitted', async () => {
+    const credKey = Buffer.alloc(32, 0x22);
+    vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialNoPrf(credKey) as unknown as PublicKeyCredential,
+    );
+    const { createPasskey } = await import('../client/passkey.js');
+    await createPasskey(minimalCreateOptions);
+    const createFn = globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>;
+    const arg = createFn.mock.calls[0][0];
+    expect(arg.publicKey.extensions).toBeUndefined();
+  });
+
+  it('returns 64-char lowercase hex sealingKeyHex for 32-byte PRF output', async () => {
+    const credKey = Buffer.alloc(32, 0x33);
+    vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential,
+    );
+    const { createPasskey } = await import('../client/passkey.js');
+    const result = await createPasskey(minimalCreateOptions, { salt });
+    expect(result.sealingKeyHex).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('returns undefined sealingKeyHex when ext.prf.results.first is absent', async () => {
+    const credKey = Buffer.alloc(32, 0x44);
+    vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialNoPrf(credKey) as unknown as PublicKeyCredential,
+    );
+    const { createPasskey } = await import('../client/passkey.js');
+    const result = await createPasskey(minimalCreateOptions, { salt });
+    expect(result.sealingKeyHex).toBeUndefined();
+  });
+
+  it('same credKey + same salt → identical sealingKeyHex (determinism)', async () => {
+    const credKey = Buffer.alloc(32, 0x55);
+    const createMock = vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>);
+    const { createPasskey } = await import('../client/passkey.js');
+
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential);
+    const a = await createPasskey(minimalCreateOptions, { salt });
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential);
+    const b = await createPasskey(minimalCreateOptions, { salt });
+    expect(a.sealingKeyHex).toBe(b.sealingKeyHex);
+  });
+
+  it('different credKey → different sealingKeyHex (divergence)', async () => {
+    const createMock = vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>);
+    const { createPasskey } = await import('../client/passkey.js');
+
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(Buffer.alloc(32, 0x66), salt) as unknown as PublicKeyCredential);
+    const a = await createPasskey(minimalCreateOptions, { salt });
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(Buffer.alloc(32, 0x77), salt) as unknown as PublicKeyCredential);
+    const b = await createPasskey(minimalCreateOptions, { salt });
+    expect(a.sealingKeyHex).not.toBe(b.sealingKeyHex);
+  });
+
+  it('same credKey + different salt → different sealingKeyHex (divergence)', async () => {
+    const credKey = Buffer.alloc(32, 0x88);
+    const altSalt = new TextEncoder().encode('different-salt-v2');
+    const createMock = vi.mocked(globalThis.navigator.credentials.create as unknown as ReturnType<typeof vi.fn>);
+    const { createPasskey } = await import('../client/passkey.js');
+
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential);
+    const a = await createPasskey(minimalCreateOptions, { salt });
+    createMock.mockResolvedValueOnce(makeMockCredentialWithPrf(credKey, altSalt) as unknown as PublicKeyCredential);
+    const b = await createPasskey(minimalCreateOptions, { salt: altSalt });
+    expect(a.sealingKeyHex).not.toBe(b.sealingKeyHex);
+  });
 });
 
-describe('authenticateWithPasskey PRF extraction (PRF-03, PRF-04, PRF-05) — filled by Plan 02', () => {
-  it.todo('includes extensions.prf.eval.first in navigator.credentials.get publicKey options');
-  it.todo('returns 64-char lowercase hex sealingKeyHex for 32-byte PRF output');
-  it.todo('returns undefined sealingKeyHex when ext.prf.results.first is absent');
+describe('authenticateWithPasskey PRF extraction (PRF-03, PRF-04, PRF-05)', () => {
+  const salt = new TextEncoder().encode('near-phantom-auth-prf-v1');
+  const minimalGetOptions = { challenge: 'Y2hhbGxlbmdl' };
+
+  it('includes extensions.prf.eval.first in navigator.credentials.get publicKey options', async () => {
+    const credKey = Buffer.alloc(32, 0xA1);
+    vi.mocked(globalThis.navigator.credentials.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential,
+    );
+    const { authenticateWithPasskey } = await import('../client/passkey.js');
+    await authenticateWithPasskey(minimalGetOptions, { salt });
+    const getFn = globalThis.navigator.credentials.get as unknown as ReturnType<typeof vi.fn>;
+    const arg = getFn.mock.calls[0][0];
+    expect(arg.publicKey.extensions?.prf?.eval?.first).toBe(salt);
+  });
+
+  it('returns 64-char lowercase hex sealingKeyHex for 32-byte PRF output', async () => {
+    const credKey = Buffer.alloc(32, 0xA2);
+    vi.mocked(globalThis.navigator.credentials.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialWithPrf(credKey, salt) as unknown as PublicKeyCredential,
+    );
+    const { authenticateWithPasskey } = await import('../client/passkey.js');
+    const result = await authenticateWithPasskey(minimalGetOptions, { salt });
+    expect(result.sealingKeyHex).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('returns undefined sealingKeyHex when ext.prf.results.first is absent', async () => {
+    const credKey = Buffer.alloc(32, 0xA3);
+    vi.mocked(globalThis.navigator.credentials.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockCredentialNoPrf(credKey) as unknown as PublicKeyCredential,
+    );
+    const { authenticateWithPasskey } = await import('../client/passkey.js');
+    const result = await authenticateWithPasskey(minimalGetOptions, { salt });
+    expect(result.sealingKeyHex).toBeUndefined();
+  });
 });
 
 describe('api.finishRegistration body threading (PRF-06) — filled by Plan 02', () => {
