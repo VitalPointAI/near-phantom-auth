@@ -288,14 +288,86 @@ describe('authenticateWithPasskey PRF extraction (PRF-03, PRF-04, PRF-05)', () =
   });
 });
 
-describe('api.finishRegistration body threading (PRF-06) — filled by Plan 02', () => {
-  it.todo('includes sealingKeyHex in POST /register/finish body when defined');
-  it.todo('omits sealingKeyHex key entirely from POST body when undefined (not sent as null)');
+describe('api.finishRegistration body threading (PRF-06)', () => {
+  it('includes sealingKeyHex in POST /register/finish body when defined', async () => {
+    const { createApiClient } = await import('../client/api.js');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, codename: 'ALPHA-7', nearAccountId: 'alpha7.testnet' }),
+    });
+    const api = createApiClient({ baseUrl: '/auth', fetch: fetchMock as unknown as typeof fetch });
+
+    await api.finishRegistration('ch-1', {} as unknown as Parameters<typeof api.finishRegistration>[1], 'tmp-1', 'ALPHA-7', 'myuser', 'a'.repeat(64));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.sealingKeyHex).toBe('a'.repeat(64));
+    expect(body.challengeId).toBe('ch-1');
+    expect(body.tempUserId).toBe('tmp-1');
+    expect(body.codename).toBe('ALPHA-7');
+    expect(body.username).toBe('myuser');
+  });
+
+  it('omits sealingKeyHex key entirely from POST body when undefined (not sent as null)', async () => {
+    const { createApiClient } = await import('../client/api.js');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, codename: 'ALPHA-7', nearAccountId: 'alpha7.testnet' }),
+    });
+    const api = createApiClient({ baseUrl: '/auth', fetch: fetchMock as unknown as typeof fetch });
+
+    await api.finishRegistration('ch-1', {} as unknown as Parameters<typeof api.finishRegistration>[1], 'tmp-1', 'ALPHA-7', 'myuser');
+
+    const rawBody: string = fetchMock.mock.calls[0][1].body;
+    expect(rawBody).not.toContain('sealingKeyHex');
+    const parsed = JSON.parse(rawBody);
+    expect('sealingKeyHex' in parsed).toBe(false);
+  });
+
+  it('omits sealingKeyHex key when passed undefined explicitly', async () => {
+    const { createApiClient } = await import('../client/api.js');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, codename: 'ALPHA-7', nearAccountId: 'alpha7.testnet' }),
+    });
+    const api = createApiClient({ baseUrl: '/auth', fetch: fetchMock as unknown as typeof fetch });
+
+    await api.finishRegistration('ch-1', {} as unknown as Parameters<typeof api.finishRegistration>[1], 'tmp-1', 'ALPHA-7', 'myuser', undefined);
+
+    const rawBody: string = fetchMock.mock.calls[0][1].body;
+    expect(rawBody).not.toContain('sealingKeyHex');
+  });
 });
 
-describe('api.finishAuthentication body threading (PRF-07) — filled by Plan 02', () => {
-  it.todo('includes sealingKeyHex in POST /login/finish body when defined');
-  it.todo('omits sealingKeyHex key entirely from POST body when undefined');
+describe('api.finishAuthentication body threading (PRF-07)', () => {
+  it('includes sealingKeyHex in POST /login/finish body when defined', async () => {
+    const { createApiClient } = await import('../client/api.js');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, codename: 'ALPHA-7' }),
+    });
+    const api = createApiClient({ baseUrl: '/auth', fetch: fetchMock as unknown as typeof fetch });
+
+    await api.finishAuthentication('ch-2', {} as unknown as Parameters<typeof api.finishAuthentication>[1], 'b'.repeat(64));
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.sealingKeyHex).toBe('b'.repeat(64));
+    expect(body.challengeId).toBe('ch-2');
+  });
+
+  it('omits sealingKeyHex key entirely from POST body when undefined', async () => {
+    const { createApiClient } = await import('../client/api.js');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, codename: 'ALPHA-7' }),
+    });
+    const api = createApiClient({ baseUrl: '/auth', fetch: fetchMock as unknown as typeof fetch });
+
+    await api.finishAuthentication('ch-2', {} as unknown as Parameters<typeof api.finishAuthentication>[1]);
+
+    const rawBody: string = fetchMock.mock.calls[0][1].body;
+    expect(rawBody).not.toContain('sealingKeyHex');
+  });
 });
 
 describe('useAnonAuth requirePrf rejection (PRF-09) — filled by Plan 03', () => {
