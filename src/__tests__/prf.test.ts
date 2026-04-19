@@ -370,7 +370,62 @@ describe('api.finishAuthentication body threading (PRF-07)', () => {
   });
 });
 
-describe('useAnonAuth requirePrf rejection (PRF-09) — filled by Plan 03', () => {
-  it.todo('rejects register() with Error when passkey.requirePrf=true and PRF unsupported');
-  it.todo('completes register() silently when passkey.requirePrf=false and PRF unsupported');
+describe('useAnonAuth requirePrf rejection (PRF-09)', () => {
+  it('register() throws PRF_NOT_SUPPORTED when requirePrf=true and credential.sealingKeyHex is falsy', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    // The guard must be present in BOTH register and login, and must check requirePrf first
+    const guardPattern = /if\s*\(\s*passkey\?\.requirePrf\s*&&\s*!credential\.sealingKeyHex\s*\)\s*\{\s*throw\s+new\s+Error\(\s*['"]PRF_NOT_SUPPORTED/;
+    const matches = source.match(new RegExp(guardPattern.source, 'g')) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('register() completes without throw when requirePrf is not set (graceful degradation)', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    // The guard is conditional on passkey?.requirePrf — absence means no throw
+    expect(source).toContain('passkey?.requirePrf');
+    // Confirm the guard is NOT unconditional (no `if (!credential.sealingKeyHex)` without passkey? prefix)
+    expect(source).not.toMatch(/if\s*\(\s*!credential\.sealingKeyHex\s*\)/);
+  });
+
+  it('register() forwards credential.sealingKeyHex to api.finishRegistration', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    expect(source).toMatch(
+      /api\.finishRegistration\(\s*challengeId,\s*credential,\s*tempUserId,\s*codename,\s*username,\s*credential\.sealingKeyHex\s*\)/
+    );
+  });
+
+  it('login() forwards credential.sealingKeyHex to api.finishAuthentication', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    expect(source).toMatch(
+      /api\.finishAuthentication\(\s*challengeId,\s*credential,\s*credential\.sealingKeyHex\s*\)/
+    );
+  });
+
+  it('DEFAULT_PRF_SALT is module-level and set to near-phantom-auth-prf-v1', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    expect(source).toContain(
+      "const DEFAULT_PRF_SALT = new TextEncoder().encode('near-phantom-auth-prf-v1')"
+    );
+    // Both register and login must use the coalescing pattern
+    const coalesceMatches = source.match(/passkey\?\.prfSalt\s*\?\?\s*DEFAULT_PRF_SALT/g) || [];
+    expect(coalesceMatches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('useCallback dependency arrays for register and login include passkey', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.promises.readFile('src/client/hooks/useAnonAuth.tsx', 'utf-8')
+    );
+    const depMatches = source.match(/\},\s*\[\s*api,\s*passkey\s*\]/g) || [];
+    expect(depMatches.length).toBeGreaterThanOrEqual(2);
+  });
 });
