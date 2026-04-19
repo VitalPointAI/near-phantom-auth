@@ -41,17 +41,19 @@ export interface ApiClient {
     response: RegistrationResponseJSON,
     tempUserId: string,
     codename: string,
-    username?: string
+    username?: string,
+    sealingKeyHex?: string
   ): Promise<RegistrationFinishResponse & { username?: string }>;
-  
+
   // Check username availability
   checkUsername(username: string): Promise<{ available: boolean; suggestion?: string }>;
-  
+
   // Authentication
   startAuthentication(codename?: string): Promise<AuthenticationStartResponse>;
   finishAuthentication(
     challengeId: string,
-    response: AuthenticationResponseJSON
+    response: AuthenticationResponseJSON,
+    sealingKeyHex?: string
   ): Promise<AuthenticationFinishResponse>;
   
   // OAuth
@@ -120,13 +122,14 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       return request('POST', '/register/start', username ? { username } : undefined);
     },
 
-    async finishRegistration(challengeId, response, tempUserId, codename, username?: string) {
+    async finishRegistration(challengeId, response, tempUserId, codename, username?: string, sealingKeyHex?: string) {
       return request('POST', '/register/finish', {
         challengeId,
         response,
         tempUserId,
         codename,
         username,
+        ...(sealingKeyHex ? { sealingKeyHex } : {}),
       });
     },
 
@@ -140,10 +143,11 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       return request('POST', '/login/start', { codename });
     },
 
-    async finishAuthentication(challengeId, response) {
+    async finishAuthentication(challengeId, response, sealingKeyHex?: string) {
       return request('POST', '/login/finish', {
         challengeId,
         response,
+        ...(sealingKeyHex ? { sealingKeyHex } : {}),
       });
     },
 
