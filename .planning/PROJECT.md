@@ -112,4 +112,4 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 | zod for runtime validation | Lightweight, TypeScript-native, good DX | — Pending |
 
 ---
-*Last updated: 2026-03-14 after initialization*
+*Last updated: 2026-04-19 after Phase 9 (WebAuthn PRF Extension) — library bumped to v0.6.0; 12 PRF-* requirements satisfied; automated verification 8/8 pass (252 tests); 6 real-browser scenarios tracked in 09-HUMAN-UAT.md*
