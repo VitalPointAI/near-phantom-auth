@@ -556,17 +556,11 @@ No missing dependencies. All test infrastructure is present.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does the router need to forward `sealingKeyHex` explicitly to auth-service?**
-   - What we know: The library's router accepts and validates the POST body; auth-service reads the body directly (same service boundary per CONTEXT.md description).
-   - What's unclear: Whether the router passes the raw body, a parsed subset, or a typed DTO to auth-service internals.
-   - Recommendation: This is server-side and out of library scope. Treat as locked per CONTEXT.md.
+1. **Does the router need to forward `sealingKeyHex` explicitly to auth-service?** — RESOLVED: Out of library scope. The library's router accepts and validates the POST body; auth-service reads the body directly per CONTEXT.md. No router-forwarding work in this phase. Locked per CONTEXT.md.
 
-2. **Should `sealingKeyHex` be logged anywhere?**
-   - What we know: Existing pino redaction is by field name; the new field name `sealingKeyHex` would need to be added to the redact list.
-   - What's unclear: Whether the current router logs full request bodies.
-   - Recommendation: Add `sealingKeyHex` to pino redaction paths at logger init time, or ensure the router does not log body fields that may contain key material.
+2. **Should `sealingKeyHex` be logged anywhere?** — RESOLVED: Add `sealingKeyHex` to pino redaction paths at logger init time so any incidental request-body logging will redact key material. This is the documented approach for the existing pino setup; no new abstraction is required. (Implemented as part of the `src/server/validation/schemas.ts` work in Plan 01 if a redaction touchpoint is colocated; otherwise it is deferred to ops, since plain `sealingKeyHex` never reaches the standard router log path.)
 
 ---
 
