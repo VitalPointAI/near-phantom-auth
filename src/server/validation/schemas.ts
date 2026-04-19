@@ -35,6 +35,7 @@ export const registerFinishBodySchema = z.object({
   challengeId: z.string().min(1),
   tempUserId: z.string().min(1),
   codename: z.string().min(1),
+  sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: z
     .object({
       id: z.string().min(1),
@@ -75,6 +76,7 @@ export const loginStartBodySchema = z.object({
  */
 export const loginFinishBodySchema = z.object({
   challengeId: z.string().min(1),
+  sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: z
     .object({
       id: z.string().min(1),
