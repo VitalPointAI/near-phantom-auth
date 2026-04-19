@@ -77,6 +77,21 @@ export interface AnonAuthConfig {
     /**
      * If true, refuse registration/login when the authenticator does not support the PRF extension.
      * Defaults to false (graceful degradation — the ceremony completes without sealingKeyHex).
+     *
+     * WR-03 TRADE-OFF: The PRF support check runs AFTER `navigator.credentials.create()`
+     * (registration) or `.get()` (login) resolves. By that point the ceremony has already
+     * run — on registration, the authenticator has provisioned the credential on the device
+     * (platform keychain, hardware key slot, etc.). If this guard throws on a requirePrf:true
+     * registration against a non-PRF authenticator, the user is left with an ORPHANED passkey
+     * on their device that the server never recorded; it cannot be cleaned up remotely and
+     * may confuse users at next login.
+     *
+     * This is an accepted limitation because PRF support is reliably detectable only via a
+     * real WebAuthn ceremony in today's browsers (`PublicKeyCredential.getClientCapabilities()`
+     * is not yet broadly available). A pre-flight probe should be added when that API lands.
+     * For login, the concern is smaller (no new credential is provisioned; only the counter
+     * advances), but the "login failed because of PRF" UX on an otherwise-valid credential
+     * is still worth calling out here.
      */
     requirePrf?: boolean;
   };

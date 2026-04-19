@@ -205,6 +205,11 @@ export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProvider
 
       // Create passkey
       const credential = await createPasskey(options, { salt: prfSalt });
+      // WR-03: requirePrf is enforced AFTER navigator.credentials.create() resolves, so the
+      // authenticator has already provisioned the credential. Throwing here leaves an
+      // orphaned passkey on the device (no server-side account). See JSDoc on
+      // AnonAuthConfig.passkey.requirePrf in src/types/index.ts for the trade-off rationale
+      // (pre-flight PRF detection requires browser APIs not yet broadly available).
       if (passkey?.requirePrf && !credential.sealingKeyHex) {
         throw new Error('PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.');
       }
@@ -255,6 +260,11 @@ export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProvider
 
       // Authenticate with passkey
       const credential = await authenticateWithPasskey(options, { salt: prfSalt });
+      // WR-03: On login this runs AFTER navigator.credentials.get() resolves — the
+      // ceremony has already bumped the authenticator counter. The credential itself is
+      // still valid for WebAuthn auth, but we reject here when requirePrf:true because
+      // downstream DEK unseal would fail anyway. See JSDoc on
+      // AnonAuthConfig.passkey.requirePrf in src/types/index.ts for full context.
       if (passkey?.requirePrf && !credential.sealingKeyHex) {
         throw new Error('PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.');
       }
