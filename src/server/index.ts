@@ -88,6 +88,9 @@ export interface AnonAuthInstance {
  * Create anonymous authentication instance
  */
 export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
+  // Note: config.passkey (prfSalt, requirePrf) is client-side only — accepted here for type
+  // symmetry with AnonAuthProviderProps but never read on the server. See src/types/index.ts.
+
   // Create logger: use provided logger or silent no-op default
   const logger = config.logger ?? pino({ level: 'silent' });
 

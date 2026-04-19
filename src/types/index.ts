@@ -62,7 +62,25 @@ export interface AnonAuthConfig {
     /** Origin for WebAuthn (e.g., https://example.com) */
     origin: string;
   };
-  
+
+  /** Passkey / PRF configuration (WebAuthn Level 3 PRF extension) */
+  passkey?: {
+    /**
+     * PRF salt for DEK sealing key derivation.
+     * Must be byte-identical across all registrations and logins for the same credential — one byte
+     * of difference produces a different 32-byte PRF output and destroys DEK access for existing users.
+     * Defaults to the library-internal constant 'near-phantom-auth-prf-v1'.
+     * Server-side documentation only — the library does not use this value at runtime on the server;
+     * the actual PRF ceremony runs in the browser. Mirror this value in AnonAuthProviderProps.passkey.
+     */
+    prfSalt?: Uint8Array;
+    /**
+     * If true, refuse registration/login when the authenticator does not support the PRF extension.
+     * Defaults to false (graceful degradation — the ceremony completes without sealingKeyHex).
+     */
+    requirePrf?: boolean;
+  };
+
   /** OAuth provider configuration */
   oauth?: OAuthConfig;
   
