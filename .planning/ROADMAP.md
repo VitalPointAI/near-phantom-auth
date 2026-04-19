@@ -182,5 +182,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 **Plans**: 3 plans
 Plans:
 - [x] 09-01-PLAN.md — Type contracts (PasskeyConfig), zod schema validation for sealingKeyHex, prf.test.ts scaffold with deterministic HMAC mock factory
-- [ ] 09-02-PLAN.md — Client PRF ceremony (createPasskey + authenticateWithPasskey extension wiring + hex extraction); api.ts spread-conditional body threading
+- [x] 09-02-PLAN.md — Client PRF ceremony (createPasskey + authenticateWithPasskey extension wiring + hex extraction); api.ts spread-conditional body threading
 - [ ] 09-03-PLAN.md — useAnonAuth.tsx PRF wiring + requirePrf rejection + DEFAULT_PRF_SALT; package.json/lockfile bump 0.5.3 -> 0.6.0; README PRF section
