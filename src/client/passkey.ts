@@ -9,6 +9,11 @@ import type {
   AuthenticationResponseJSON,
 } from '../types/index.js';
 
+// WebAuthn Level 3 PRF extension — not yet in TypeScript DOM lib (lib.dom.d.ts pre-ES2025).
+// Do NOT replace with `as any` — this localized augmentation keeps strict typing at call sites.
+type PRFExtensionInput = { prf: { eval: { first: Uint8Array } } };
+type PRFExtensionOutput = { prf?: { enabled?: boolean; results?: { first?: ArrayBuffer } } };
+
 /**
  * Check if WebAuthn is supported
  */
@@ -62,11 +67,22 @@ function bufferToBase64url(buffer: ArrayBuffer): string {
 }
 
 /**
+ * Encode ArrayBuffer to lowercase hex string.
+ * For 32-byte input (e.g., WebAuthn PRF output), produces a 64-character string.
+ */
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
  * Create a new passkey (registration)
  */
 export async function createPasskey(
-  options: PublicKeyCredentialCreationOptionsJSON
-): Promise<RegistrationResponseJSON> {
+  options: PublicKeyCredentialCreationOptionsJSON,
+  prfOptions?: { salt: Uint8Array }
+): Promise<RegistrationResponseJSON & { sealingKeyHex?: string }> {
   if (!isWebAuthnSupported()) {
     throw new Error('WebAuthn is not supported in this browser');
   }
@@ -89,6 +105,17 @@ export async function createPasskey(
       type: cred.type,
       transports: cred.transports,
     })),
+    ...(prfOptions
+      ? {
+          // PRF extension is WebAuthn Level 3; not in lib.dom.d.ts. Build the value
+          // with the PRFExtensionInput local shape (keeps strict typing at construction),
+          // then double-cast through `unknown` to satisfy the broader DOM extensions type
+          // (which lacks a `prf` field in pre-ES2025 lib.dom.d.ts).
+          extensions: ({
+            prf: { eval: { first: prfOptions.salt } },
+          } satisfies PRFExtensionInput) as unknown as PublicKeyCredentialCreationOptions['extensions'],
+        }
+      : {}),
   };
 
   // Create credential
@@ -107,6 +134,11 @@ export async function createPasskey(
   const authenticatorAttachment = rawAttachment as 'platform' | 'cross-platform' | undefined;
   const transports = response.getTransports?.() as RegistrationResponseJSON['response']['transports'];
 
+  // Extract PRF result if PRF was requested and authenticator returned one.
+  const ext = credential.getClientExtensionResults() as PRFExtensionOutput;
+  const prfResult: ArrayBuffer | undefined = ext.prf?.results?.first;
+  const sealingKeyHex: string | undefined = prfResult ? arrayBufferToHex(prfResult) : undefined;
+
   // Convert response to JSON format
   return {
     id: credential.id,
@@ -121,6 +153,7 @@ export async function createPasskey(
     // Privacy metadata
     authenticatorAttachment,
     transports,
+    sealingKeyHex,
   };
 }
 
@@ -147,8 +180,9 @@ export function isLikelyCloudSynced(credential: RegistrationResponseJSON): boole
  * Authenticate with existing passkey
  */
 export async function authenticateWithPasskey(
-  options: PublicKeyCredentialRequestOptionsJSON
-): Promise<AuthenticationResponseJSON> {
+  options: PublicKeyCredentialRequestOptionsJSON,
+  prfOptions?: { salt: Uint8Array }
+): Promise<AuthenticationResponseJSON & { sealingKeyHex?: string }> {
   if (!isWebAuthnSupported()) {
     throw new Error('WebAuthn is not supported in this browser');
   }
@@ -164,6 +198,17 @@ export async function authenticateWithPasskey(
       type: cred.type,
       transports: cred.transports,
     })),
+    ...(prfOptions
+      ? {
+          // PRF extension is WebAuthn Level 3; not in lib.dom.d.ts. Build the value
+          // with the PRFExtensionInput local shape (keeps strict typing at construction),
+          // then double-cast through `unknown` to satisfy the broader DOM extensions type
+          // (which lacks a `prf` field in pre-ES2025 lib.dom.d.ts).
+          extensions: ({
+            prf: { eval: { first: prfOptions.salt } },
+          } satisfies PRFExtensionInput) as unknown as PublicKeyCredentialRequestOptions['extensions'],
+        }
+      : {}),
   };
 
   // Get credential
@@ -177,6 +222,11 @@ export async function authenticateWithPasskey(
 
   const response = credential.response as AuthenticatorAssertionResponse;
 
+  // Extract PRF result if PRF was requested and authenticator returned one.
+  const ext = credential.getClientExtensionResults() as PRFExtensionOutput;
+  const prfResult: ArrayBuffer | undefined = ext.prf?.results?.first;
+  const sealingKeyHex: string | undefined = prfResult ? arrayBufferToHex(prfResult) : undefined;
+
   // Convert response to JSON format
   return {
     id: credential.id,
@@ -189,5 +239,6 @@ export async function authenticateWithPasskey(
       userHandle: response.userHandle ? bufferToBase64url(response.userHandle) : undefined,
     },
     clientExtensionResults: credential.getClientExtensionResults() as Record<string, unknown>,
+    sealingKeyHex,
   };
 }
