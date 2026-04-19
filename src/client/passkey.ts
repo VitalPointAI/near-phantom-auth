@@ -137,6 +137,15 @@ export async function createPasskey(
   // Extract PRF result if PRF was requested and authenticator returned one.
   const ext = credential.getClientExtensionResults() as PRFExtensionOutput;
   const prfResult: ArrayBuffer | undefined = ext.prf?.results?.first;
+  // WR-01: Anchor the 32-byte invariant at the source. The WebAuthn Level 3 spec
+  // mandates a 32-byte PRF output; a non-compliant authenticator returning a
+  // different length would otherwise silently produce a malformed sealingKeyHex
+  // that only surfaces as a generic server 400. Throw a clear local error instead.
+  if (prfResult && prfResult.byteLength !== 32) {
+    throw new Error(
+      `PRF_UNEXPECTED_LENGTH: expected 32 bytes, got ${prfResult.byteLength}`,
+    );
+  }
   const sealingKeyHex: string | undefined = prfResult ? arrayBufferToHex(prfResult) : undefined;
 
   // Convert response to JSON format
@@ -225,6 +234,15 @@ export async function authenticateWithPasskey(
   // Extract PRF result if PRF was requested and authenticator returned one.
   const ext = credential.getClientExtensionResults() as PRFExtensionOutput;
   const prfResult: ArrayBuffer | undefined = ext.prf?.results?.first;
+  // WR-01: Anchor the 32-byte invariant at the source. The WebAuthn Level 3 spec
+  // mandates a 32-byte PRF output; a non-compliant authenticator returning a
+  // different length would otherwise silently produce a malformed sealingKeyHex
+  // that only surfaces as a generic server 400. Throw a clear local error instead.
+  if (prfResult && prfResult.byteLength !== 32) {
+    throw new Error(
+      `PRF_UNEXPECTED_LENGTH: expected 32 bytes, got ${prfResult.byteLength}`,
+    );
+  }
   const sealingKeyHex: string | undefined = prfResult ? arrayBufferToHex(prfResult) : undefined;
 
   // Convert response to JSON format
