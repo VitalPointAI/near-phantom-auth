@@ -35,6 +35,11 @@ export const registerFinishBodySchema = z.object({
   challengeId: z.string().min(1),
   tempUserId: z.string().min(1),
   codename: z.string().min(1),
+  // WR-02: sealingKeyHex is validated here (64-char lowercase hex, 32-byte PRF
+  // output) but NOT consumed by any route handler in this library. It is
+  // accepted so downstream consumers (e.g., a DEK auth-service) can forward
+  // it as-is. Treat as key material: do NOT log the validated body as a whole;
+  // extract fields individually if logging is required.
   sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: z
     .object({
@@ -76,6 +81,11 @@ export const loginStartBodySchema = z.object({
  */
 export const loginFinishBodySchema = z.object({
   challengeId: z.string().min(1),
+  // WR-02: sealingKeyHex is validated here (64-char lowercase hex, 32-byte PRF
+  // output) but NOT consumed by any route handler in this library. It is
+  // accepted so downstream consumers (e.g., a DEK auth-service) can forward
+  // it as-is. Treat as key material: do NOT log the validated body as a whole;
+  // extract fields individually if logging is required.
   sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: z
     .object({
