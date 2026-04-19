@@ -181,6 +181,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
   8. README documents salt immutability, browser support matrix, and the NULL key-bundle migration approach
 **Plans**: 3 plans
 Plans:
-- [ ] 09-01-PLAN.md — Type contracts (PasskeyConfig), zod schema validation for sealingKeyHex, prf.test.ts scaffold with deterministic HMAC mock factory
+- [x] 09-01-PLAN.md — Type contracts (PasskeyConfig), zod schema validation for sealingKeyHex, prf.test.ts scaffold with deterministic HMAC mock factory
 - [ ] 09-02-PLAN.md — Client PRF ceremony (createPasskey + authenticateWithPasskey extension wiring + hex extraction); api.ts spread-conditional body threading
 - [ ] 09-03-PLAN.md — useAnonAuth.tsx PRF wiring + requirePrf rejection + DEFAULT_PRF_SALT; package.json/lockfile bump 0.5.3 -> 0.6.0; README PRF section
