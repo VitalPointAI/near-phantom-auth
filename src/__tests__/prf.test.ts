@@ -13,9 +13,8 @@
  * globalThis in beforeEach. PRF output is deterministic HMAC-SHA-256(credKey, salt)
  * via node:crypto — same inputs always produce the same 32-byte ArrayBuffer.
  *
- * NOTE: The actual test bodies for createPasskey / authenticateWithPasskey / api.ts /
- * useAnonAuth assertions are fleshed out in Plans 02 and 03. This file is the Wave 0
- * scaffold: mock factories + globals setup + it.todo() placeholders for every PRF-* req.
+ * Fully populated across Plans 01 (scaffold + schema tests), 02 (createPasskey /
+ * authenticateWithPasskey / api bodies), and 03 (useAnonAuth source-pattern guards).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

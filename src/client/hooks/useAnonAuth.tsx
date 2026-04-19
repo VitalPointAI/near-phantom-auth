@@ -86,14 +86,42 @@ export type AnonAuthContextValue = AnonAuthState & AnonAuthActions & {
 
 const AnonAuthContext = createContext<AnonAuthContextValue | null>(null);
 
+/**
+ * Default PRF salt for DEK sealing key derivation.
+ *
+ * IMMUTABILITY WARNING: This salt is a permanent deployment commitment. Once users have
+ * registered passkeys and their DEKs are bound to it, changing this string (even one byte)
+ * destroys DEK access for every existing user. Override via
+ * <AnonAuthProvider passkey={{ prfSalt }}> only if your app needs a custom value, and treat
+ * any chosen value as immutable for the lifetime of the deployment.
+ */
+const DEFAULT_PRF_SALT = new TextEncoder().encode('near-phantom-auth-prf-v1');
+
 export interface AnonAuthProviderProps {
   /** API URL (e.g., '/auth') */
   apiUrl: string;
+  /**
+   * Passkey / PRF configuration (WebAuthn Level 3 PRF extension).
+   * Mirrors AnonAuthConfig.passkey on the server side for symmetry.
+   */
+  passkey?: {
+    /**
+     * PRF salt for DEK sealing key derivation. Defaults to the library-internal constant
+     * ('near-phantom-auth-prf-v1'). Must be byte-identical across every registration and
+     * login — see DEFAULT_PRF_SALT JSDoc above for immutability rules.
+     */
+    prfSalt?: Uint8Array;
+    /**
+     * If true, register() and login() reject with 'PRF_NOT_SUPPORTED' when the authenticator
+     * does not return a PRF result. Defaults to false (graceful degradation).
+     */
+    requirePrf?: boolean;
+  };
   /** Children */
   children: ReactNode;
 }
 
-export function AnonAuthProvider({ apiUrl, children }: AnonAuthProviderProps) {
+export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProviderProps) {
   const [api] = useState(() => createApiClient({ baseUrl: apiUrl }));
   const [state, setState] = useState<AnonAuthState>({
     isLoading: true,
@@ -170,25 +198,30 @@ export function AnonAuthProvider({ apiUrl, children }: AnonAuthProviderProps) {
   const register = useCallback(async (username?: string) => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null, credentialCloudSynced: null }));
-      
+
       // Start registration with optional username
       const { challengeId, options, tempUserId, codename } = await api.startRegistration(username);
-      
+      const prfSalt = passkey?.prfSalt ?? DEFAULT_PRF_SALT;
+
       // Create passkey
-      const credential = await createPasskey(options);
-      
+      const credential = await createPasskey(options, { salt: prfSalt });
+      if (passkey?.requirePrf && !credential.sealingKeyHex) {
+        throw new Error('PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.');
+      }
+
       // Check if credential appears cloud-synced (privacy warning)
       const cloudSynced = isLikelyCloudSynced(credential);
-      
+
       // Finish registration
       const result = await api.finishRegistration(
         challengeId,
         credential,
         tempUserId,
         codename,
-        username
+        username,
+        credential.sealingKeyHex
       );
-      
+
       if (result.success) {
         setState((prev) => ({
           ...prev,
@@ -210,25 +243,29 @@ export function AnonAuthProvider({ apiUrl, children }: AnonAuthProviderProps) {
         error: error instanceof Error ? error.message : 'Registration failed',
       }));
     }
-  }, [api]);
+  }, [api, passkey]);
 
   const login = useCallback(async (codename?: string) => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
-      
+
       // Start authentication
       const { challengeId, options } = await api.startAuthentication(codename);
-      
+      const prfSalt = passkey?.prfSalt ?? DEFAULT_PRF_SALT;
+
       // Authenticate with passkey
-      const credential = await authenticateWithPasskey(options);
-      
+      const credential = await authenticateWithPasskey(options, { salt: prfSalt });
+      if (passkey?.requirePrf && !credential.sealingKeyHex) {
+        throw new Error('PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.');
+      }
+
       // Finish authentication
-      const result = await api.finishAuthentication(challengeId, credential);
-      
+      const result = await api.finishAuthentication(challengeId, credential, credential.sealingKeyHex);
+
       if (result.success) {
         // Refresh session to get full info
         const session = await api.getSession();
-        
+
         setState((prev) => ({
           ...prev,
           isLoading: false,
@@ -247,7 +284,7 @@ export function AnonAuthProvider({ apiUrl, children }: AnonAuthProviderProps) {
         error: error instanceof Error ? error.message : 'Login failed',
       }));
     }
-  }, [api]);
+  }, [api, passkey]);
 
   const logout = useCallback(async () => {
     try {
