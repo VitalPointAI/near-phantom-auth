@@ -19,6 +19,59 @@ Anonymous passkey authentication with NEAR MPC accounts and decentralized recove
 - **CSRF Protection**: Opt-in Double Submit Cookie with automatic OAuth callback exemption
 - **Structured Logging**: Injectable pino logger with sensitive field redaction; silent by default
 - **Automatic Cleanup**: Scheduler removes expired sessions, challenges, and OAuth states
+- **PRF-Derived Sealing Key** (v0.6.0+): WebAuthn PRF extension produces a stable per-credential 32-byte sealing key for end-to-end encryption — opt-in via `passkey.prfSalt`/`requirePrf`, graceful degradation on Firefox/older authenticators
+
+## WebAuthn PRF Extension (DEK Sealing Key)
+
+Since v0.6.0, the library requests the WebAuthn PRF (Pseudo-Random Function) extension on every registration and login. A PRF-capable authenticator deterministically derives 32 bytes per credential (HMAC-SHA-256 over the RP-supplied salt, computed inside the authenticator's secure enclave). The 32 bytes are hex-encoded as `sealingKeyHex` and posted in the body of `/register/finish` and `/login/finish`. Downstream services (e.g., an auth-service DEK provisioner) can use this stable key material to seal/unseal per-user encrypted data.
+
+> **The 32 bytes never leave the authenticator's secure enclave in raw form. Only the salt and the derived hex are seen by application code.**
+
+### Configuration
+
+```tsx
+import { AnonAuthProvider } from '@vitalpoint/near-phantom-auth/client';
+
+function App() {
+  return (
+    <AnonAuthProvider
+      apiUrl="/auth"
+      passkey={{
+        prfSalt: new TextEncoder().encode('my-app-prf-sealing-v1'),
+        requirePrf: false,
+      }}
+    >
+      <AuthDemo />
+    </AnonAuthProvider>
+  );
+}
+```
+
+The same `passkey: { prfSalt, requirePrf }` shape is also accepted on `createAnonAuth({ passkey })` server-side for symmetry with the client surface. On the server this is type documentation only — the library does not use these values at runtime on the server; the salt and enforcement rules live entirely in the browser.
+
+If `passkey` is omitted, the library defaults to `prfSalt = new TextEncoder().encode('near-phantom-auth-prf-v1')` and `requirePrf = false`.
+
+### Salt Immutability
+
+- **Do not change the salt after deployment.**
+- The PRF output is deterministic over (credential, salt). Changing the salt by one byte produces a different sealing key and makes any data encrypted with the original key inaccessible.
+- The `v1` suffix is a rotation identifier, not a semver — it does NOT mean "to be upgraded later." Treat the chosen salt as a permanent constant for the lifetime of the deployment.
+
+### Browser Support
+
+| Browser / Authenticator                       | Registration PRF                     | Login PRF | Notes                                                              |
+| --------------------------------------------- | ------------------------------------ | --------- | ------------------------------------------------------------------ |
+| Chrome / Edge ≥116                            | yes                                  | yes       | iCloud Keychain / Google Password Manager / Chrome 147+ Windows Hello |
+| Safari ≥18 (iOS 18, macOS 15)                 | yes                                  | yes       | Synced platform passkeys                                           |
+| Firefox                                       | no                                   | no        | PRF not yet implemented as of mid-2025; graceful degradation applies |
+| Hardware keys (YubiKey, etc.)                 | no (returns `enabled: true` only)    | yes       | First sealing key arrives on first successful login, not registration |
+| Chrome ≤146 Windows Hello                     | no                                   | yes       | Same hardware-key behavior                                         |
+
+When the authenticator does not return a PRF result, `sealingKeyHex` is omitted from the POST body (the field is absent, not sent as `null`). With `requirePrf: false` (default), the registration/login ceremony completes normally and the user can still use unencrypted features — encrypted endpoints simply 401 until the user logs in again on a PRF-capable device. With `requirePrf: true`, the `register()`/`login()` hook methods throw an `Error` whose message starts with `PRF_NOT_SUPPORTED`; the `useAnonAuth` hook surfaces this as `state.error` via the existing catch path. Choose `requirePrf: true` only if your user base is restricted to PRF-capable authenticators — otherwise you will lock out Firefox users entirely.
+
+### Migration for Existing Accounts (NULL Key Bundles)
+
+Users who registered before v0.6.0 do not have a DEK provisioned server-side — their account records have a NULL key bundle (`users.mlkem_ek IS NULL`). Once the auth-service is patched so that `provisionUserKeys()` fires whenever `getUserKeyBundle(userId)` returns `null` on login (not only for brand-new `isNewUser` registrations), these accounts auto-bootstrap on next successful login. No client-side migration is required: starting at v0.6.0 the library ships `sealingKeyHex` on every login for PRF-capable authenticators, and the server decides — based on the presence of an existing key bundle — whether to provision a new DEK or unwrap the existing one.
 
 ## Installation
 

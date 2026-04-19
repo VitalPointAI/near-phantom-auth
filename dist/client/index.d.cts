@@ -1,6 +1,7 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
-import { R as RegistrationStartResponse, a as RegistrationResponseJSON, b as RegistrationFinishResponse, A as AuthenticationStartResponse, c as AuthenticationResponseJSON, d as AuthenticationFinishResponse, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON } from '../index-Bywvf8De.cjs';
+import { R as RegistrationStartResponse, a as RegistrationResponseJSON, b as RegistrationFinishResponse, A as AuthenticationStartResponse, c as AuthenticationResponseJSON, d as AuthenticationFinishResponse, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON } from '../index-DOCiBiZ2.cjs';
+import 'pino';
 
 interface AnonAuthState {
     /** Whether initial session check is in progress */
@@ -80,10 +81,27 @@ type AnonAuthContextValue = AnonAuthState & AnonAuthActions & {
 interface AnonAuthProviderProps {
     /** API URL (e.g., '/auth') */
     apiUrl: string;
+    /**
+     * Passkey / PRF configuration (WebAuthn Level 3 PRF extension).
+     * Mirrors AnonAuthConfig.passkey on the server side for symmetry.
+     */
+    passkey?: {
+        /**
+         * PRF salt for DEK sealing key derivation. Defaults to the library-internal constant
+         * ('near-phantom-auth-prf-v1'). Must be byte-identical across every registration and
+         * login — see DEFAULT_PRF_SALT JSDoc above for immutability rules.
+         */
+        prfSalt?: Uint8Array;
+        /**
+         * If true, register() and login() reject with 'PRF_NOT_SUPPORTED' when the authenticator
+         * does not return a PRF result. Defaults to false (graceful degradation).
+         */
+        requirePrf?: boolean;
+    };
     /** Children */
     children: ReactNode;
 }
-declare function AnonAuthProvider({ apiUrl, children }: AnonAuthProviderProps): react_jsx_runtime.JSX.Element;
+declare function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProviderProps): react_jsx_runtime.JSX.Element;
 /**
  * Hook to access anonymous auth state and actions
  */
@@ -178,7 +196,7 @@ interface ApiClient {
         tempUserId: string;
         username?: string;
     }>;
-    finishRegistration(challengeId: string, response: RegistrationResponseJSON, tempUserId: string, codename: string, username?: string): Promise<RegistrationFinishResponse & {
+    finishRegistration(challengeId: string, response: RegistrationResponseJSON, tempUserId: string, codename: string, username?: string, sealingKeyHex?: string): Promise<RegistrationFinishResponse & {
         username?: string;
     }>;
     checkUsername(username: string): Promise<{
@@ -186,7 +204,7 @@ interface ApiClient {
         suggestion?: string;
     }>;
     startAuthentication(codename?: string): Promise<AuthenticationStartResponse>;
-    finishAuthentication(challengeId: string, response: AuthenticationResponseJSON): Promise<AuthenticationFinishResponse>;
+    finishAuthentication(challengeId: string, response: AuthenticationResponseJSON, sealingKeyHex?: string): Promise<AuthenticationFinishResponse>;
     getOAuthProviders(): Promise<{
         providers: OAuthProvider[];
     }>;
@@ -252,7 +270,11 @@ declare function isPlatformAuthenticatorAvailable(): Promise<boolean>;
 /**
  * Create a new passkey (registration)
  */
-declare function createPasskey(options: PublicKeyCredentialCreationOptionsJSON): Promise<RegistrationResponseJSON>;
+declare function createPasskey(options: PublicKeyCredentialCreationOptionsJSON, prfOptions?: {
+    salt: Uint8Array;
+}): Promise<RegistrationResponseJSON & {
+    sealingKeyHex?: string;
+}>;
 /**
  * Check if credential appears to use cloud-synced storage
  * Returns true if likely synced (platform authenticator), false if likely safe (hardware key)
@@ -261,6 +283,10 @@ declare function isLikelyCloudSynced(credential: RegistrationResponseJSON): bool
 /**
  * Authenticate with existing passkey
  */
-declare function authenticateWithPasskey(options: PublicKeyCredentialRequestOptionsJSON): Promise<AuthenticationResponseJSON>;
+declare function authenticateWithPasskey(options: PublicKeyCredentialRequestOptionsJSON, prfOptions?: {
+    salt: Uint8Array;
+}): Promise<AuthenticationResponseJSON & {
+    sealingKeyHex?: string;
+}>;
 
 export { type AnonAuthActions, type AnonAuthContextValue, AnonAuthProvider, type AnonAuthProviderProps, type AnonAuthState, type ApiClient, type ApiClientConfig, type OAuthActions, type OAuthContextValue, OAuthProvider$1 as OAuthProvider, type OAuthProviderProps, type OAuthProviders, type OAuthState, type OAuthUser, type RecoveryActions, type SessionInfo, authenticateWithPasskey, createApiClient, createPasskey, isLikelyCloudSynced, isPlatformAuthenticatorAvailable, isWebAuthnSupported, useAnonAuth, useOAuth, useOAuthCallback };

@@ -1,6 +1,7 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as AnonAuthConfig } from '../index-Bywvf8De.cjs';
-export { i as AnonUser, j as OAuthProvider, k as OAuthUser, U as User, l as UserType } from '../index-Bywvf8De.cjs';
+import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as RateLimitConfig, C as CsrfConfig, i as AnonAuthConfig } from '../index-DOCiBiZ2.cjs';
+export { j as AnonUser, k as OAuthProvider, l as OAuthUser, U as User, m as UserType } from '../index-DOCiBiZ2.cjs';
+import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.cjs';
 
 /**
@@ -25,6 +26,8 @@ interface SessionConfig {
     secure?: boolean;
     /** SameSite setting (default: strict) */
     sameSite?: 'strict' | 'lax' | 'none';
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: Logger;
 }
 interface SessionManager {
     createSession(userId: string, res: Response, options?: {
@@ -51,6 +54,8 @@ interface PasskeyConfig {
     origin: string;
     /** Challenge timeout in ms (default: 60000) */
     challengeTimeoutMs?: number;
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: Logger;
 }
 interface PasskeyManager {
     startRegistration(userId: string, userDisplayName: string): Promise<{
@@ -86,6 +91,7 @@ interface PasskeyManager {
  * Creates NEAR accounts using Chain Signatures MPC network.
  * No private keys are stored - all key management is decentralized.
  */
+
 interface MPCAccount {
     nearAccountId: string;
     derivationPath: string;
@@ -98,6 +104,9 @@ interface MPCConfig {
     treasuryAccount?: string;
     treasuryPrivateKey?: string;
     fundingAmount?: string;
+    derivationSalt?: string;
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: Logger;
 }
 /**
  * MPC Account Manager
@@ -109,6 +118,8 @@ declare class MPCAccountManager {
     private treasuryAccount?;
     private treasuryPrivateKey?;
     private fundingAmount;
+    private derivationSalt?;
+    private log;
     constructor(config: MPCConfig);
     /**
      * Create a new NEAR account for an anonymous user
@@ -119,15 +130,24 @@ declare class MPCAccountManager {
      *
      * This creates an on-chain link without storing it in our database.
      * The recovery wallet can be used to prove ownership and create new passkeys.
+     *
+     * @param nearAccountId - The user's NEAR implicit account ID
+     * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
      */
-    addRecoveryWallet(nearAccountId: string, recoveryWalletId: string): Promise<{
+    addRecoveryWallet(nearAccountId: string, recoveryWalletPublicKey: string): Promise<{
         success: boolean;
         txHash?: string;
     }>;
     /**
-     * Verify that a wallet has recovery access to an account
+     * Verify that a wallet has recovery access to an account by checking the
+     * specific recovery wallet public key via view_access_key RPC.
+     *
+     * Returns false when account has keys but none match the recovery wallet key.
+     *
+     * @param nearAccountId - The user's NEAR implicit account ID
+     * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
      */
-    verifyRecoveryWallet(nearAccountId: string, recoveryWalletId: string): Promise<boolean>;
+    verifyRecoveryWallet(nearAccountId: string, recoveryWalletPublicKey: string): Promise<boolean>;
     /**
      * Get MPC contract ID
      */
@@ -137,6 +157,13 @@ declare class MPCAccountManager {
      */
     getNetworkId(): string;
 }
+
+/**
+ * Wallet Recovery
+ *
+ * Allows users to link a NEAR wallet as a recovery method.
+ * The wallet is added as an on-chain access key - no mapping stored in our DB.
+ */
 
 interface WalletSignature {
     signature: string;
@@ -187,6 +214,7 @@ interface WalletRecoveryManager {
  * - web3.storage (https://web3.storage)
  * - Infura (https://infura.io)
  */
+
 interface IPFSRecoveryConfig {
     pinningService: 'pinata' | 'web3storage' | 'infura' | 'custom';
     /** API key (required for pinata, web3storage, infura) */
@@ -199,6 +227,8 @@ interface IPFSRecoveryConfig {
     customPin?: (data: Uint8Array) => Promise<string>;
     /** Custom fetch function */
     customFetch?: (cid: string) => Promise<Uint8Array>;
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: Logger;
 }
 interface RecoveryPayload {
     userId: string;
@@ -288,6 +318,45 @@ interface OAuthManager {
  */
 declare function createOAuthManager(config: OAuthProviderConfig, db: DatabaseAdapter): OAuthManager;
 
+interface CleanupScheduler {
+    /** Stop the cleanup interval. Call on graceful shutdown. */
+    stop(): void;
+}
+/**
+ * Create a periodic cleanup scheduler that removes expired sessions,
+ * challenges, and OAuth states from the database.
+ *
+ * The interval timer is unref'd so it does not prevent process exit.
+ * Consumers call this after initializing the library and call stop()
+ * on graceful shutdown.
+ *
+ * @param db - DatabaseAdapter instance
+ * @param log - pino Logger instance
+ * @param intervalMs - cleanup interval in milliseconds (default: 5 minutes)
+ */
+declare function createCleanupScheduler(db: DatabaseAdapter, log: Logger, intervalMs?: number): CleanupScheduler;
+
+/**
+ * Email Service
+ *
+ * AWS SES-based email delivery for sending recovery passwords to OAuth users.
+ */
+
+interface EmailConfig {
+    /** AWS SES region (e.g., 'us-east-1') */
+    region: string;
+    /** AWS access key ID (optional — uses instance profile if omitted) */
+    accessKeyId?: string;
+    /** AWS secret access key (required when accessKeyId is provided) */
+    secretAccessKey?: string;
+    /** Verified sender email address or domain identity in SES */
+    fromAddress: string;
+}
+interface EmailService {
+    sendRecoveryPassword(toEmail: string, recoveryPassword: string): Promise<void>;
+}
+declare function createEmailService(config: EmailConfig, log: Logger): EmailService;
+
 /**
  * Codename Generator
  *
@@ -313,7 +382,7 @@ interface PostgresConfig {
 /**
  * SQL schema for near-anon-auth tables
  */
-declare const POSTGRES_SCHEMA = "\n-- Anonymous users (HUMINT sources - passkey only)\nCREATE TABLE IF NOT EXISTS anon_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  codename TEXT UNIQUE NOT NULL,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth users (standard users - OAuth providers)\nCREATE TABLE IF NOT EXISTS oauth_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT UNIQUE NOT NULL,\n  name TEXT,\n  avatar_url TEXT,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth provider connections\nCREATE TABLE IF NOT EXISTS oauth_providers (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL REFERENCES oauth_users(id) ON DELETE CASCADE,\n  provider TEXT NOT NULL,\n  provider_id TEXT NOT NULL,\n  email TEXT,\n  name TEXT,\n  avatar_url TEXT,\n  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(provider, provider_id)\n);\n\n-- Passkeys (WebAuthn credentials) - for anonymous users\nCREATE TABLE IF NOT EXISTS anon_passkeys (\n  credential_id TEXT PRIMARY KEY,\n  user_id UUID NOT NULL REFERENCES anon_users(id) ON DELETE CASCADE,\n  public_key BYTEA NOT NULL,\n  counter BIGINT NOT NULL DEFAULT 0,\n  device_type TEXT NOT NULL,\n  backed_up BOOLEAN NOT NULL DEFAULT false,\n  transports TEXT[],\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Sessions (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_sessions (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  expires_at TIMESTAMPTZ NOT NULL,\n  last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  ip_address TEXT,\n  user_agent TEXT\n);\n\n-- WebAuthn challenges (temporary)\nCREATE TABLE IF NOT EXISTS anon_challenges (\n  id UUID PRIMARY KEY,\n  challenge TEXT NOT NULL,\n  type TEXT NOT NULL,\n  user_id UUID,\n  expires_at TIMESTAMPTZ NOT NULL,\n  metadata JSONB\n);\n\n-- Recovery data references (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_recovery (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  type TEXT NOT NULL,\n  reference TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(user_id, type)\n);\n\n-- Indexes\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_user ON anon_sessions(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_expires ON anon_sessions(expires_at);\nCREATE INDEX IF NOT EXISTS idx_anon_passkeys_user ON anon_passkeys(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_challenges_expires ON anon_challenges(expires_at);\nCREATE INDEX IF NOT EXISTS idx_oauth_users_email ON oauth_users(email);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);\n";
+declare const POSTGRES_SCHEMA = "\n-- Anonymous users (HUMINT sources - passkey only)\nCREATE TABLE IF NOT EXISTS anon_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  codename TEXT UNIQUE NOT NULL,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth users (standard users - OAuth providers)\nCREATE TABLE IF NOT EXISTS oauth_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT UNIQUE NOT NULL,\n  name TEXT,\n  avatar_url TEXT,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth provider connections\nCREATE TABLE IF NOT EXISTS oauth_providers (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL REFERENCES oauth_users(id) ON DELETE CASCADE,\n  provider TEXT NOT NULL,\n  provider_id TEXT NOT NULL,\n  email TEXT,\n  name TEXT,\n  avatar_url TEXT,\n  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(provider, provider_id)\n);\n\n-- Passkeys (WebAuthn credentials) - for anonymous users\nCREATE TABLE IF NOT EXISTS anon_passkeys (\n  credential_id TEXT PRIMARY KEY,\n  user_id UUID NOT NULL REFERENCES anon_users(id) ON DELETE CASCADE,\n  public_key BYTEA NOT NULL,\n  counter BIGINT NOT NULL DEFAULT 0,\n  device_type TEXT NOT NULL,\n  backed_up BOOLEAN NOT NULL DEFAULT false,\n  transports TEXT[],\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Sessions (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_sessions (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  expires_at TIMESTAMPTZ NOT NULL,\n  last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  ip_address TEXT,\n  user_agent TEXT\n);\n\n-- WebAuthn challenges (temporary)\nCREATE TABLE IF NOT EXISTS anon_challenges (\n  id UUID PRIMARY KEY,\n  challenge TEXT NOT NULL,\n  type TEXT NOT NULL,\n  user_id UUID,\n  expires_at TIMESTAMPTZ NOT NULL,\n  metadata JSONB\n);\n\n-- Recovery data references (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_recovery (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  type TEXT NOT NULL,\n  reference TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(user_id, type)\n);\n\n-- OAuth state (cross-instance durability for OAuth login flows)\nCREATE TABLE IF NOT EXISTS oauth_state (\n  state TEXT PRIMARY KEY,\n  provider TEXT NOT NULL,\n  code_verifier TEXT,\n  redirect_uri TEXT NOT NULL,\n  expires_at TIMESTAMPTZ NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Indexes\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_user ON anon_sessions(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_expires ON anon_sessions(expires_at);\nCREATE INDEX IF NOT EXISTS idx_anon_passkeys_user ON anon_passkeys(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_challenges_expires ON anon_challenges(expires_at);\nCREATE INDEX IF NOT EXISTS idx_oauth_users_email ON oauth_users(email);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);\nCREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);\n";
 /**
  * Create PostgreSQL adapter
  *
@@ -333,6 +402,16 @@ interface OAuthRouterConfig {
     mpcManager: MPCAccountManager;
     oauthConfig: OAuthConfig;
     ipfsRecovery?: IPFSRecoveryManager;
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: Logger;
+    /** Optional rate limiting config */
+    rateLimiting?: RateLimitConfig;
+    /** Optional CSRF config (Double Submit Cookie) */
+    csrf?: CsrfConfig;
+    /** Optional email service for sending recovery passwords */
+    emailService?: EmailService;
+    /** Optional pre-created OAuthManager instance. If omitted, one is created internally. */
+    oauthManager?: OAuthManager;
 }
 declare function createOAuthRouter(config: OAuthRouterConfig): Router;
 
@@ -400,4 +479,4 @@ interface AnonAuthInstance {
  */
 declare function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance;
 
-export { AnonAuthConfig, type AnonAuthInstance, DatabaseAdapter, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };
+export { AnonAuthConfig, type AnonAuthInstance, type CleanupScheduler, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };

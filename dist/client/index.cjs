@@ -30,13 +30,14 @@ function createApiClient(config) {
     async startRegistration(username) {
       return request("POST", "/register/start", username ? { username } : void 0);
     },
-    async finishRegistration(challengeId, response, tempUserId, codename, username) {
+    async finishRegistration(challengeId, response, tempUserId, codename, username, sealingKeyHex) {
       return request("POST", "/register/finish", {
         challengeId,
         response,
         tempUserId,
         codename,
-        username
+        username,
+        ...sealingKeyHex ? { sealingKeyHex } : {}
       });
     },
     // Check username availability
@@ -47,10 +48,11 @@ function createApiClient(config) {
     async startAuthentication(codename) {
       return request("POST", "/login/start", { codename });
     },
-    async finishAuthentication(challengeId, response) {
+    async finishAuthentication(challengeId, response, sealingKeyHex) {
       return request("POST", "/login/finish", {
         challengeId,
-        response
+        response,
+        ...sealingKeyHex ? { sealingKeyHex } : {}
       });
     },
     // OAuth
@@ -141,7 +143,10 @@ function bufferToBase64url(buffer) {
   const base64 = btoa(binary);
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
-async function createPasskey(options) {
+function arrayBufferToHex(buffer) {
+  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function createPasskey(options, prfOptions) {
   if (!isWebAuthnSupported()) {
     throw new Error("WebAuthn is not supported in this browser");
   }
@@ -161,7 +166,16 @@ async function createPasskey(options) {
       id: base64urlToBuffer(cred.id),
       type: cred.type,
       transports: cred.transports
-    }))
+    })),
+    ...prfOptions ? {
+      // PRF extension is WebAuthn Level 3; not in lib.dom.d.ts. Build the value
+      // with the PRFExtensionInput local shape (keeps strict typing at construction),
+      // then double-cast through `unknown` to satisfy the broader DOM extensions type
+      // (which lacks a `prf` field in pre-ES2025 lib.dom.d.ts).
+      extensions: {
+        prf: { eval: { first: prfOptions.salt } }
+      }
+    } : {}
   };
   const credential = await navigator.credentials.create({
     publicKey: publicKeyOptions
@@ -173,6 +187,9 @@ async function createPasskey(options) {
   const rawAttachment = credential.authenticatorAttachment;
   const authenticatorAttachment = rawAttachment;
   const transports = response.getTransports?.();
+  const ext = credential.getClientExtensionResults();
+  const prfResult = ext.prf?.results?.first;
+  const sealingKeyHex = prfResult ? arrayBufferToHex(prfResult) : void 0;
   return {
     id: credential.id,
     rawId: bufferToBase64url(credential.rawId),
@@ -185,7 +202,8 @@ async function createPasskey(options) {
     clientExtensionResults: credential.getClientExtensionResults(),
     // Privacy metadata
     authenticatorAttachment,
-    transports
+    transports,
+    sealingKeyHex
   };
 }
 function isLikelyCloudSynced(credential) {
@@ -196,7 +214,7 @@ function isLikelyCloudSynced(credential) {
   if (transports?.includes("internal")) return true;
   return true;
 }
-async function authenticateWithPasskey(options) {
+async function authenticateWithPasskey(options, prfOptions) {
   if (!isWebAuthnSupported()) {
     throw new Error("WebAuthn is not supported in this browser");
   }
@@ -209,7 +227,16 @@ async function authenticateWithPasskey(options) {
       id: base64urlToBuffer(cred.id),
       type: cred.type,
       transports: cred.transports
-    }))
+    })),
+    ...prfOptions ? {
+      // PRF extension is WebAuthn Level 3; not in lib.dom.d.ts. Build the value
+      // with the PRFExtensionInput local shape (keeps strict typing at construction),
+      // then double-cast through `unknown` to satisfy the broader DOM extensions type
+      // (which lacks a `prf` field in pre-ES2025 lib.dom.d.ts).
+      extensions: {
+        prf: { eval: { first: prfOptions.salt } }
+      }
+    } : {}
   };
   const credential = await navigator.credentials.get({
     publicKey: publicKeyOptions
@@ -218,6 +245,9 @@ async function authenticateWithPasskey(options) {
     throw new Error("Authentication failed");
   }
   const response = credential.response;
+  const ext = credential.getClientExtensionResults();
+  const prfResult = ext.prf?.results?.first;
+  const sealingKeyHex = prfResult ? arrayBufferToHex(prfResult) : void 0;
   return {
     id: credential.id,
     rawId: bufferToBase64url(credential.rawId),
@@ -228,11 +258,13 @@ async function authenticateWithPasskey(options) {
       signature: bufferToBase64url(response.signature),
       userHandle: response.userHandle ? bufferToBase64url(response.userHandle) : void 0
     },
-    clientExtensionResults: credential.getClientExtensionResults()
+    clientExtensionResults: credential.getClientExtensionResults(),
+    sealingKeyHex
   };
 }
 var AnonAuthContext = react.createContext(null);
-function AnonAuthProvider({ apiUrl, children }) {
+var DEFAULT_PRF_SALT = new TextEncoder().encode("near-phantom-auth-prf-v1");
+function AnonAuthProvider({ apiUrl, passkey, children }) {
   const [api] = react.useState(() => createApiClient({ baseUrl: apiUrl }));
   const [state, setState] = react.useState({
     isLoading: true,
@@ -297,14 +329,19 @@ function AnonAuthProvider({ apiUrl, children }) {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null, credentialCloudSynced: null }));
       const { challengeId, options, tempUserId, codename } = await api.startRegistration(username);
-      const credential = await createPasskey(options);
+      const prfSalt = passkey?.prfSalt ?? DEFAULT_PRF_SALT;
+      const credential = await createPasskey(options, { salt: prfSalt });
+      if (passkey?.requirePrf && !credential.sealingKeyHex) {
+        throw new Error("PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.");
+      }
       const cloudSynced = isLikelyCloudSynced(credential);
       const result = await api.finishRegistration(
         challengeId,
         credential,
         tempUserId,
         codename,
-        username
+        username,
+        credential.sealingKeyHex
       );
       if (result.success) {
         setState((prev) => ({
@@ -327,13 +364,17 @@ function AnonAuthProvider({ apiUrl, children }) {
         error: error instanceof Error ? error.message : "Registration failed"
       }));
     }
-  }, [api]);
+  }, [api, passkey]);
   const login = react.useCallback(async (codename) => {
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
       const { challengeId, options } = await api.startAuthentication(codename);
-      const credential = await authenticateWithPasskey(options);
-      const result = await api.finishAuthentication(challengeId, credential);
+      const prfSalt = passkey?.prfSalt ?? DEFAULT_PRF_SALT;
+      const credential = await authenticateWithPasskey(options, { salt: prfSalt });
+      if (passkey?.requirePrf && !credential.sealingKeyHex) {
+        throw new Error("PRF_NOT_SUPPORTED: This authenticator does not support the PRF extension required for encrypted storage.");
+      }
+      const result = await api.finishAuthentication(challengeId, credential, credential.sealingKeyHex);
       if (result.success) {
         const session = await api.getSession();
         setState((prev) => ({
@@ -354,7 +395,7 @@ function AnonAuthProvider({ apiUrl, children }) {
         error: error instanceof Error ? error.message : "Login failed"
       }));
     }
-  }, [api]);
+  }, [api, passkey]);
   const logout = react.useCallback(async () => {
     try {
       await api.logout();

@@ -1,8 +1,14 @@
 'use strict';
 
 var server = require('@simplewebauthn/server');
+var pino = require('pino');
+
+function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
+
+var pino__default = /*#__PURE__*/_interopDefault(pino);
 
 // src/server/webauthn.ts
+var log = pino__default.default({ level: "silent" }).child({ module: "webauthn" });
 async function createRegistrationOptions(input) {
   const {
     rpName,
@@ -65,7 +71,7 @@ async function verifyRegistration(input) {
       }
     };
   } catch (error) {
-    console.error("[WebAuthn] Registration verification error:", error);
+    log.error({ err: error }, "Registration verification error");
     return {
       verified: false,
       error: error instanceof Error ? error.message : "Verification failed"
@@ -112,7 +118,7 @@ async function verifyAuthentication(input) {
       newCounter: verification.authenticationInfo.newCounter
     };
   } catch (error) {
-    console.error("[WebAuthn] Authentication verification error:", error);
+    log.error({ err: error }, "Authentication verification error");
     return {
       verified: false,
       error: error instanceof Error ? error.message : "Verification failed"

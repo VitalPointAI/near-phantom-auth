@@ -1,9 +1,21 @@
-import { scrypt, randomBytes, createHash, randomUUID, createHmac, createDecipheriv, createCipheriv } from 'crypto';
+import pino3 from 'pino';
+import { scrypt, randomBytes, createHash, randomUUID, createHmac, timingSafeEqual, createDecipheriv, createCipheriv } from 'crypto';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
+import bs582 from 'bs58';
+import BN from 'bn.js';
+import { actionCreators, createTransaction } from '@near-js/transactions';
+import { KeyPairSigner } from '@near-js/signers';
+import { KeyPair, PublicKey } from '@near-js/crypto';
 import nacl from 'tweetnacl';
-import bs58 from 'bs58';
 import { promisify } from 'util';
+import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { Router, json } from 'express';
+import { rateLimit } from 'express-rate-limit';
+import { doubleCsrf } from 'csrf-csrf';
+import cookieParser from 'cookie-parser';
+import { z } from 'zod';
+
+// src/server/index.ts
 
 // src/server/db/adapters/postgres.ts
 var POSTGRES_SCHEMA = `
@@ -89,6 +101,16 @@ CREATE TABLE IF NOT EXISTS anon_recovery (
   UNIQUE(user_id, type)
 );
 
+-- OAuth state (cross-instance durability for OAuth login flows)
+CREATE TABLE IF NOT EXISTS oauth_state (
+  state TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  code_verifier TEXT,
+  redirect_uri TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_anon_sessions_user ON anon_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_anon_sessions_expires ON anon_sessions(expires_at);
@@ -97,7 +119,38 @@ CREATE INDEX IF NOT EXISTS idx_anon_challenges_expires ON anon_challenges(expire
 CREATE INDEX IF NOT EXISTS idx_oauth_users_email ON oauth_users(email);
 CREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);
 CREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);
 `;
+function mapOAuthUserRows(rows) {
+  if (rows.length === 0 || !rows[0].id) return null;
+  const first = rows[0];
+  const providers = [];
+  for (const row of rows) {
+    if (row.provider) {
+      providers.push({
+        provider: row.provider,
+        providerId: row.provider_id,
+        email: row.p_email,
+        name: row.p_name,
+        avatarUrl: row.p_avatar_url,
+        connectedAt: row.connected_at
+      });
+    }
+  }
+  return {
+    id: first.id,
+    type: "standard",
+    email: first.email,
+    name: first.name,
+    avatarUrl: first.avatar_url,
+    nearAccountId: first.near_account_id,
+    mpcPublicKey: first.mpc_public_key,
+    derivationPath: first.derivation_path,
+    providers,
+    createdAt: first.created_at,
+    lastActiveAt: first.last_active_at
+  };
+}
 function createPostgresAdapter(config) {
   let pool = null;
   async function getPool() {
@@ -106,6 +159,143 @@ function createPostgresAdapter(config) {
       pool = new Pool({ connectionString: config.connectionString });
     }
     return pool;
+  }
+  function buildClientAdapter(client) {
+    return {
+      async initialize() {
+        throw new Error("Not available in transaction context");
+      },
+      async createUser(input) {
+        const result = await client.query(
+          `INSERT INTO anon_users (codename, near_account_id, mpc_public_key, derivation_path)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, codename, near_account_id, mpc_public_key, derivation_path, created_at, last_active_at`,
+          [input.codename, input.nearAccountId, input.mpcPublicKey, input.derivationPath]
+        );
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          type: "anonymous",
+          codename: row.codename,
+          nearAccountId: row.near_account_id,
+          mpcPublicKey: row.mpc_public_key,
+          derivationPath: row.derivation_path,
+          createdAt: row.created_at,
+          lastActiveAt: row.last_active_at
+        };
+      },
+      async getUserById() {
+        throw new Error("Not available in transaction context");
+      },
+      async getUserByCodename() {
+        throw new Error("Not available in transaction context");
+      },
+      async getUserByNearAccount() {
+        throw new Error("Not available in transaction context");
+      },
+      async createOAuthUser() {
+        throw new Error("Not available in transaction context");
+      },
+      async getOAuthUserById() {
+        throw new Error("Not available in transaction context");
+      },
+      async getOAuthUserByEmail() {
+        throw new Error("Not available in transaction context");
+      },
+      async getOAuthUserByProvider() {
+        throw new Error("Not available in transaction context");
+      },
+      async linkOAuthProvider() {
+        throw new Error("Not available in transaction context");
+      },
+      async createPasskey(input) {
+        await client.query(
+          `INSERT INTO anon_passkeys (credential_id, user_id, public_key, counter, device_type, backed_up, transports)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            input.credentialId,
+            input.userId,
+            input.publicKey,
+            input.counter,
+            input.deviceType,
+            input.backedUp,
+            input.transports || null
+          ]
+        );
+        return {
+          ...input,
+          createdAt: /* @__PURE__ */ new Date()
+        };
+      },
+      async getPasskeyById() {
+        throw new Error("Not available in transaction context");
+      },
+      async getPasskeysByUserId() {
+        throw new Error("Not available in transaction context");
+      },
+      async updatePasskeyCounter() {
+        throw new Error("Not available in transaction context");
+      },
+      async deletePasskey() {
+        throw new Error("Not available in transaction context");
+      },
+      async createSession(input) {
+        const result = await client.query(
+          `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
+           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
+           RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+          [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+        );
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          expiresAt: row.expires_at,
+          lastActivityAt: row.last_activity_at,
+          ipAddress: row.ip_address,
+          userAgent: row.user_agent
+        };
+      },
+      async getSession() {
+        throw new Error("Not available in transaction context");
+      },
+      async deleteSession() {
+        throw new Error("Not available in transaction context");
+      },
+      async deleteUserSessions() {
+        throw new Error("Not available in transaction context");
+      },
+      async cleanExpiredSessions() {
+        throw new Error("Not available in transaction context");
+      },
+      async storeChallenge(challenge) {
+        await client.query(
+          `INSERT INTO anon_challenges (id, challenge, type, user_id, expires_at, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            challenge.id,
+            challenge.challenge,
+            challenge.type,
+            challenge.userId || null,
+            challenge.expiresAt,
+            challenge.metadata ? JSON.stringify(challenge.metadata) : null
+          ]
+        );
+      },
+      async getChallenge() {
+        throw new Error("Not available in transaction context");
+      },
+      async deleteChallenge(challengeId) {
+        await client.query("DELETE FROM anon_challenges WHERE id = $1", [challengeId]);
+      },
+      async storeRecoveryData() {
+        throw new Error("Not available in transaction context");
+      },
+      async getRecoveryData() {
+        throw new Error("Not available in transaction context");
+      }
+    };
   }
   return {
     async initialize() {
@@ -239,81 +429,47 @@ function createPostgresAdapter(config) {
     },
     async getOAuthUserById(id) {
       const p = await getPool();
-      const userResult = await p.query(
-        "SELECT * FROM oauth_users WHERE id = $1",
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         LEFT JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.id = $1`,
         [id]
       );
-      if (userResult.rows.length === 0) return null;
-      const userRow = userResult.rows[0];
-      const providersResult = await p.query(
-        "SELECT * FROM oauth_providers WHERE user_id = $1",
-        [id]
-      );
-      const providers = providersResult.rows.map((row) => ({
-        provider: row.provider,
-        providerId: row.provider_id,
-        email: row.email,
-        name: row.name,
-        avatarUrl: row.avatar_url,
-        connectedAt: row.connected_at
-      }));
-      return {
-        id: userRow.id,
-        type: "standard",
-        email: userRow.email,
-        name: userRow.name,
-        avatarUrl: userRow.avatar_url,
-        nearAccountId: userRow.near_account_id,
-        mpcPublicKey: userRow.mpc_public_key,
-        derivationPath: userRow.derivation_path,
-        providers,
-        createdAt: userRow.created_at,
-        lastActiveAt: userRow.last_active_at
-      };
+      return mapOAuthUserRows(result.rows);
     },
     async getOAuthUserByEmail(email) {
       const p = await getPool();
-      const userResult = await p.query(
-        "SELECT * FROM oauth_users WHERE email = $1",
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         LEFT JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.email = $1`,
         [email]
       );
-      if (userResult.rows.length === 0) return null;
-      const userRow = userResult.rows[0];
-      const providersResult = await p.query(
-        "SELECT * FROM oauth_providers WHERE user_id = $1",
-        [userRow.id]
-      );
-      const providers = providersResult.rows.map((row) => ({
-        provider: row.provider,
-        providerId: row.provider_id,
-        email: row.email,
-        name: row.name,
-        avatarUrl: row.avatar_url,
-        connectedAt: row.connected_at
-      }));
-      return {
-        id: userRow.id,
-        type: "standard",
-        email: userRow.email,
-        name: userRow.name,
-        avatarUrl: userRow.avatar_url,
-        nearAccountId: userRow.near_account_id,
-        mpcPublicKey: userRow.mpc_public_key,
-        derivationPath: userRow.derivation_path,
-        providers,
-        createdAt: userRow.created_at,
-        lastActiveAt: userRow.last_active_at
-      };
+      return mapOAuthUserRows(result.rows);
     },
     async getOAuthUserByProvider(provider, providerId) {
       const p = await getPool();
-      const providerResult = await p.query(
-        "SELECT user_id FROM oauth_providers WHERE provider = $1 AND provider_id = $2",
+      const result = await p.query(
+        `SELECT u.id, u.email, u.name, u.avatar_url, u.near_account_id, u.mpc_public_key,
+                u.derivation_path, u.created_at, u.last_active_at,
+                p.provider, p.provider_id, p.email AS p_email,
+                p.name AS p_name, p.avatar_url AS p_avatar_url, p.connected_at
+         FROM oauth_users u
+         JOIN oauth_providers p ON p.user_id = u.id
+         WHERE u.id = (
+           SELECT user_id FROM oauth_providers WHERE provider = $1 AND provider_id = $2
+         )`,
         [provider, providerId]
       );
-      if (providerResult.rows.length === 0) return null;
-      const userId = providerResult.rows[0].user_id;
-      return this.getOAuthUserById(userId);
+      return mapOAuthUserRows(result.rows);
     },
     async linkOAuthProvider(userId, provider) {
       const p = await getPool();
@@ -451,6 +607,13 @@ function createPostgresAdapter(config) {
       const result = await p.query("DELETE FROM anon_sessions WHERE expires_at < NOW()");
       return result.rowCount || 0;
     },
+    async updateSessionExpiry(sessionId, newExpiresAt) {
+      const p = await getPool();
+      await p.query(
+        "UPDATE anon_sessions SET expires_at = $1 WHERE id = $2",
+        [newExpiresAt, sessionId]
+      );
+    },
     async storeChallenge(challenge) {
       const p = await getPool();
       await p.query(
@@ -510,6 +673,74 @@ function createPostgresAdapter(config) {
         reference: row.reference,
         createdAt: row.created_at
       };
+    },
+    async transaction(fn) {
+      const p = await getPool();
+      const client = await p.connect();
+      try {
+        await client.query("BEGIN");
+        const txAdapter = buildClientAdapter(client);
+        const result = await fn(txAdapter);
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async deleteUser(userId) {
+      const p = await getPool();
+      await p.query("DELETE FROM anon_users WHERE id = $1", [userId]);
+    },
+    async deleteRecoveryData(userId) {
+      const p = await getPool();
+      await p.query("DELETE FROM anon_recovery WHERE user_id = $1", [userId]);
+    },
+    // ============================================
+    // OAuth State (DB-backed, cross-instance)
+    // ============================================
+    async storeOAuthState(state) {
+      const p = await getPool();
+      await p.query(
+        `INSERT INTO oauth_state (state, provider, code_verifier, redirect_uri, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (state) DO NOTHING`,
+        [state.state, state.provider, state.codeVerifier || null, state.redirectUri, state.expiresAt]
+      );
+    },
+    async getOAuthState(stateKey) {
+      const p = await getPool();
+      const result = await p.query(
+        `SELECT state, provider, code_verifier, redirect_uri, expires_at
+         FROM oauth_state
+         WHERE state = $1 AND expires_at > NOW()`,
+        [stateKey]
+      );
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        state: row.state,
+        provider: row.provider,
+        codeVerifier: row.code_verifier,
+        redirectUri: row.redirect_uri,
+        expiresAt: row.expires_at
+      };
+    },
+    async deleteOAuthState(stateKey) {
+      const p = await getPool();
+      await p.query("DELETE FROM oauth_state WHERE state = $1", [stateKey]);
+    },
+    async cleanExpiredChallenges() {
+      const p = await getPool();
+      const result = await p.query("DELETE FROM anon_challenges WHERE expires_at < NOW()");
+      return result.rowCount || 0;
+    },
+    async cleanExpiredOAuthStates() {
+      const p = await getPool();
+      const result = await p.query("DELETE FROM oauth_state WHERE expires_at < NOW()");
+      return result.rowCount || 0;
     }
   };
 }
@@ -524,7 +755,10 @@ function verifySessionId(signedValue, secret) {
   if (parts.length !== 2) return null;
   const [sessionId, signature] = parts;
   const expectedSignature = createHmac("sha256", secret).update(sessionId).digest("base64url");
-  if (signature !== expectedSignature) return null;
+  const sigBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  if (sigBuffer.length !== expectedBuffer.length) return null;
+  if (!timingSafeEqual(sigBuffer, expectedBuffer)) return null;
   return sessionId;
 }
 function parseCookies(req) {
@@ -540,7 +774,9 @@ function parseCookies(req) {
   return cookies;
 }
 function createSessionManager(db, config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "session" });
   const cookieName = config.cookieName || SESSION_COOKIE_NAME;
+  let warnedNoUpdateSessionExpiry = false;
   const durationMs = config.durationMs || DEFAULT_SESSION_DURATION_MS;
   const isProduction = process.env.NODE_ENV === "production";
   const cookieOptions = {
@@ -610,6 +846,12 @@ function createSessionManager(db, config) {
       const elapsed = now - created;
       if (elapsed > lifetime * 0.5) {
         const newExpiresAt = new Date(now + durationMs);
+        if (db.updateSessionExpiry) {
+          await db.updateSessionExpiry(session.id, newExpiresAt);
+        } else if (!warnedNoUpdateSessionExpiry) {
+          log2.warn("Session refresh is cookie-only \u2014 implement updateSessionExpiry on your adapter for full persistence.");
+          warnedNoUpdateSessionExpiry = true;
+        }
         const signedId = signSessionId(session.id, config.secret);
         res.cookie(cookieName, signedId, {
           ...cookieOptions,
@@ -622,6 +864,7 @@ function createSessionManager(db, config) {
   };
 }
 function createPasskeyManager(db, config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "passkey" });
   const challengeTimeoutMs = config.challengeTimeoutMs || 6e4;
   return {
     async startRegistration(userId, userDisplayName) {
@@ -683,7 +926,7 @@ function createPasskeyManager(db, config) {
           expectedRPID: config.rpId
         });
       } catch (error) {
-        console.error("[Passkey] Registration verification failed:", error);
+        log2.error({ err: error }, "Registration verification failed");
         await db.deleteChallenge(challengeId);
         return { verified: false };
       }
@@ -767,7 +1010,7 @@ function createPasskeyManager(db, config) {
           }
         });
       } catch (error) {
-        console.error("[Passkey] Authentication verification failed:", error);
+        log2.error({ err: error }, "Authentication verification failed");
         await db.deleteChallenge(challengeId);
         return { verified: false };
       }
@@ -788,333 +1031,7 @@ function createPasskeyManager(db, config) {
     }
   };
 }
-function getMPCContractId(networkId) {
-  return networkId === "mainnet" ? "v1.signer-prod.near" : "v1.signer-prod.testnet";
-}
-function getRPCUrl(networkId) {
-  return networkId === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org";
-}
-function base58Encode(bytes) {
-  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let result = "";
-  let num = BigInt("0x" + bytes.toString("hex"));
-  while (num > 0n) {
-    const remainder = Number(num % 58n);
-    num = num / 58n;
-    result = ALPHABET[remainder] + result;
-  }
-  for (const byte of bytes) {
-    if (byte === 0) {
-      result = "1" + result;
-    } else {
-      break;
-    }
-  }
-  return result || "1";
-}
-function derivePublicKey(seed) {
-  const hash = createHash("sha512").update(seed).digest();
-  return hash.subarray(0, 32);
-}
-async function accountExists(accountId, networkId) {
-  try {
-    const rpcUrl = getRPCUrl(networkId);
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "check-account",
-        method: "query",
-        params: {
-          request_type: "view_account",
-          finality: "final",
-          account_id: accountId
-        }
-      })
-    });
-    const result = await response.json();
-    return !result.error;
-  } catch {
-    return false;
-  }
-}
-function generateAccountName(userId, prefix) {
-  const hash = createHash("sha256").update(userId).digest("hex");
-  const shortHash = hash.substring(0, 12);
-  return `${prefix}-${shortHash}`;
-}
-async function fundAccountFromTreasury(accountId, treasuryAccount, treasuryPrivateKey, amountNear, networkId) {
-  const nacl2 = await import('tweetnacl');
-  const bs582 = await import('bs58');
-  try {
-    const rpcUrl = getRPCUrl(networkId);
-    const keyString = treasuryPrivateKey.replace("ed25519:", "");
-    let secretKey;
-    try {
-      secretKey = bs582.default.decode(keyString);
-    } catch {
-      secretKey = Buffer.from(keyString, "base64");
-    }
-    const publicKey = secretKey.length === 64 ? secretKey.slice(32) : nacl2.default.sign.keyPair.fromSeed(secretKey.slice(0, 32)).publicKey;
-    const publicKeyB58 = bs582.default.encode(Buffer.from(publicKey));
-    const fullPublicKey = `ed25519:${publicKeyB58}`;
-    console.log("[MPC] Treasury public key:", fullPublicKey);
-    const accessKeyResponse = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "get-access-key",
-        method: "query",
-        params: {
-          request_type: "view_access_key",
-          finality: "final",
-          account_id: treasuryAccount,
-          public_key: fullPublicKey
-        }
-      })
-    });
-    const accessKeyResult = await accessKeyResponse.json();
-    if (accessKeyResult.error || !accessKeyResult.result) {
-      console.error("[MPC] Access key error:", accessKeyResult.error);
-      return {
-        success: false,
-        error: `Could not get access key: ${accessKeyResult.error?.cause?.name || "Unknown"}`
-      };
-    }
-    const nonce = accessKeyResult.result.nonce + 1;
-    const blockHash = accessKeyResult.result.block_hash;
-    const amountYocto = BigInt(Math.floor(parseFloat(amountNear) * 1e24));
-    const transaction = buildTransferTransaction(
-      treasuryAccount,
-      publicKey,
-      nonce,
-      accountId,
-      blockHash,
-      amountYocto,
-      bs582.default
-    );
-    const txHash = createHash("sha256").update(transaction).digest();
-    const signature = nacl2.default.sign.detached(txHash, secretKey);
-    const signedTx = buildSignedTransaction(transaction, signature, publicKey);
-    const submitResponse = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "send-tx",
-        method: "broadcast_tx_commit",
-        params: [Buffer.from(signedTx).toString("base64")]
-      })
-    });
-    const submitResult = await submitResponse.json();
-    if (submitResult.error) {
-      console.error("[MPC] Transaction error:", submitResult.error);
-      return {
-        success: false,
-        error: submitResult.error.data || submitResult.error.message || "Transaction failed"
-      };
-    }
-    const resultHash = submitResult.result?.transaction?.hash || "unknown";
-    console.log("[MPC] Funded account:", accountId, "txHash:", resultHash);
-    return { success: true, txHash: resultHash };
-  } catch (error) {
-    console.error("[MPC] Treasury funding failed:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error"
-    };
-  }
-}
-function buildTransferTransaction(signerId, publicKey, nonce, receiverId, blockHash, amount, bs582) {
-  const parts = [];
-  parts.push(serializeString(signerId));
-  parts.push(new Uint8Array([0]));
-  parts.push(new Uint8Array(publicKey));
-  parts.push(serializeU64(BigInt(nonce)));
-  parts.push(serializeString(receiverId));
-  parts.push(bs582.decode(blockHash));
-  parts.push(serializeU32(1));
-  parts.push(new Uint8Array([3]));
-  parts.push(serializeU128(amount));
-  return concatArrays(parts);
-}
-function buildSignedTransaction(transaction, signature, publicKey) {
-  const parts = [];
-  parts.push(transaction);
-  parts.push(new Uint8Array([0]));
-  parts.push(new Uint8Array(signature));
-  return concatArrays(parts);
-}
-function serializeString(str) {
-  const bytes = Buffer.from(str, "utf8");
-  const len = serializeU32(bytes.length);
-  return concatArrays([len, bytes]);
-}
-function serializeU32(num) {
-  const buf = Buffer.alloc(4);
-  buf.writeUInt32LE(num);
-  return buf;
-}
-function serializeU64(num) {
-  const buf = Buffer.alloc(8);
-  buf.writeBigUInt64LE(num);
-  return buf;
-}
-function serializeU128(num) {
-  const buf = Buffer.alloc(16);
-  buf.writeBigUInt64LE(num & BigInt("0xFFFFFFFFFFFFFFFF"), 0);
-  buf.writeBigUInt64LE(num >> BigInt(64), 8);
-  return buf;
-}
-function concatArrays(arrays) {
-  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
-var MPCAccountManager = class {
-  networkId;
-  mpcContractId;
-  accountPrefix;
-  treasuryAccount;
-  treasuryPrivateKey;
-  fundingAmount;
-  constructor(config) {
-    this.networkId = config.networkId;
-    this.mpcContractId = getMPCContractId(config.networkId);
-    this.accountPrefix = config.accountPrefix || "anon";
-    this.treasuryAccount = config.treasuryAccount;
-    this.treasuryPrivateKey = config.treasuryPrivateKey;
-    this.fundingAmount = config.fundingAmount || "0.01";
-  }
-  /**
-   * Create a new NEAR account for an anonymous user
-   */
-  async createAccount(userId) {
-    const accountName = generateAccountName(userId, this.accountPrefix);
-    const suffix = this.networkId === "mainnet" ? ".near" : ".testnet";
-    const nearAccountId = `${accountName}${suffix}`;
-    const derivationPath = `near-anon-auth,${userId}`;
-    console.log("[MPC] Creating NEAR account:", {
-      nearAccountId,
-      derivationPath,
-      mpcContractId: this.mpcContractId
-    });
-    try {
-      const seed = createHash("sha256").update(`implicit-${userId}`).digest();
-      const publicKeyBytes = derivePublicKey(seed);
-      const implicitAccountId = publicKeyBytes.toString("hex");
-      const publicKey = `ed25519:${base58Encode(publicKeyBytes)}`;
-      console.log(`[MPC] Created ${this.networkId} implicit account:`, implicitAccountId);
-      const alreadyExists = await accountExists(implicitAccountId, this.networkId);
-      if (alreadyExists) {
-        console.log("[MPC] Implicit account already funded:", implicitAccountId);
-        return {
-          nearAccountId: implicitAccountId,
-          derivationPath,
-          mpcPublicKey: publicKey,
-          onChain: true
-        };
-      }
-      let onChain = false;
-      if (this.treasuryAccount && this.treasuryPrivateKey) {
-        console.log("[MPC] Funding implicit account from treasury...");
-        const fundResult = await fundAccountFromTreasury(
-          implicitAccountId,
-          this.treasuryAccount,
-          this.treasuryPrivateKey,
-          this.fundingAmount,
-          this.networkId
-        );
-        if (fundResult.success) {
-          console.log("[MPC] Account funded:", fundResult.txHash);
-          onChain = true;
-        } else {
-          console.warn("[MPC] Funding failed, account will be dormant:", fundResult.error);
-        }
-      } else {
-        console.warn("[MPC] No treasury configured, account will be dormant until funded");
-      }
-      return {
-        nearAccountId: implicitAccountId,
-        derivationPath,
-        mpcPublicKey: publicKey,
-        onChain
-      };
-    } catch (error) {
-      console.error("[MPC] Mainnet implicit account creation failed:", error);
-      return {
-        nearAccountId,
-        derivationPath,
-        mpcPublicKey: "creation-failed",
-        onChain: false
-      };
-    }
-  }
-  /**
-   * Add a recovery wallet as an access key to the MPC account
-   * 
-   * This creates an on-chain link without storing it in our database.
-   * The recovery wallet can be used to prove ownership and create new passkeys.
-   */
-  async addRecoveryWallet(nearAccountId, recoveryWalletId) {
-    console.log("[MPC] Adding recovery wallet:", {
-      nearAccountId,
-      recoveryWalletId
-    });
-    return {
-      success: true,
-      txHash: `pending-${Date.now()}`
-    };
-  }
-  /**
-   * Verify that a wallet has recovery access to an account
-   */
-  async verifyRecoveryWallet(nearAccountId, recoveryWalletId) {
-    try {
-      const rpcUrl = getRPCUrl(this.networkId);
-      const response = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "check-keys",
-          method: "query",
-          params: {
-            request_type: "view_access_key_list",
-            finality: "final",
-            account_id: nearAccountId
-          }
-        })
-      });
-      const result = await response.json();
-      return !!result.result?.keys?.length;
-    } catch {
-      return false;
-    }
-  }
-  /**
-   * Get MPC contract ID
-   */
-  getMPCContractId() {
-    return this.mpcContractId;
-  }
-  /**
-   * Get network ID
-   */
-  getNetworkId() {
-    return this.networkId;
-  }
-};
-function createMPCManager(config) {
-  return new MPCAccountManager(config);
-}
+var _log = pino3({ level: "silent" }).child({ module: "wallet-recovery" });
 function generateWalletChallenge(action, timestamp) {
   return `near-anon-auth:${action}:${timestamp}`;
 }
@@ -1124,7 +1041,7 @@ function verifyWalletSignature(signature, expectedMessage) {
       return false;
     }
     const pubKeyStr = signature.publicKey.replace("ed25519:", "");
-    const publicKeyBytes = bs58.decode(pubKeyStr);
+    const publicKeyBytes = bs582.decode(pubKeyStr);
     const signatureBytes = Buffer.from(signature.signature, "base64");
     const messageHash = createHash("sha256").update(signature.message).digest();
     return nacl.sign.detached.verify(
@@ -1133,7 +1050,7 @@ function verifyWalletSignature(signature, expectedMessage) {
       publicKeyBytes
     );
   } catch (error) {
-    console.error("[WalletRecovery] Signature verification failed:", error);
+    _log.error({ err: error }, "Signature verification failed");
     return false;
   }
 }
@@ -1162,6 +1079,7 @@ async function checkWalletAccess(nearAccountId, walletPublicKey, networkId) {
   }
 }
 function createWalletRecoveryManager(config) {
+  (config.logger ?? pino3({ level: "silent" })).child({ module: "wallet-recovery" });
   const CHALLENGE_TIMEOUT_MS = 5 * 60 * 1e3;
   return {
     generateLinkChallenge() {
@@ -1196,6 +1114,391 @@ function createWalletRecoveryManager(config) {
       return { verified: hasAccess };
     }
   };
+}
+
+// src/server/mpc.ts
+function getMPCContractId(networkId) {
+  return networkId === "mainnet" ? "v1.signer-prod.near" : "v1.signer-prod.testnet";
+}
+function getRPCUrl(networkId) {
+  return networkId === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org";
+}
+function derivePublicKey(seed) {
+  const hash = createHash("sha512").update(seed).digest();
+  return hash.subarray(0, 32);
+}
+async function accountExists(accountId, networkId) {
+  try {
+    const rpcUrl = getRPCUrl(networkId);
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "check-account",
+        method: "query",
+        params: {
+          request_type: "view_account",
+          finality: "final",
+          account_id: accountId
+        }
+      })
+    });
+    const result = await response.json();
+    return !result.error;
+  } catch {
+    return false;
+  }
+}
+function generateAccountName(userId, prefix) {
+  const hash = createHash("sha256").update(userId).digest("hex");
+  const shortHash = hash.substring(0, 12);
+  return `${prefix}-${shortHash}`;
+}
+async function fundAccountFromTreasury(accountId, treasuryAccount, treasuryPrivateKey, amountNear, networkId, log2) {
+  const nacl2 = await import('tweetnacl');
+  try {
+    const rpcUrl = getRPCUrl(networkId);
+    const keyString = treasuryPrivateKey.replace("ed25519:", "");
+    let secretKey;
+    try {
+      secretKey = bs582.decode(keyString);
+    } catch {
+      secretKey = Buffer.from(keyString, "base64");
+    }
+    const publicKey = secretKey.length === 64 ? secretKey.slice(32) : nacl2.default.sign.keyPair.fromSeed(secretKey.slice(0, 32)).publicKey;
+    const publicKeyB58 = bs582.encode(Buffer.from(publicKey));
+    const fullPublicKey = `ed25519:${publicKeyB58}`;
+    log2.info({ accountId: treasuryAccount }, "Treasury public key verified");
+    const accessKeyResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "get-access-key",
+        method: "query",
+        params: {
+          request_type: "view_access_key",
+          finality: "final",
+          account_id: treasuryAccount,
+          public_key: fullPublicKey
+        }
+      })
+    });
+    const accessKeyResult = await accessKeyResponse.json();
+    if (accessKeyResult.error || !accessKeyResult.result) {
+      log2.error({ err: new Error(JSON.stringify(accessKeyResult.error)) }, "Access key error");
+      return {
+        success: false,
+        error: `Could not get access key: ${accessKeyResult.error?.cause?.name || "Unknown"}`
+      };
+    }
+    const nonce = accessKeyResult.result.nonce + 1;
+    const blockHash = accessKeyResult.result.block_hash;
+    const [whole, fraction = ""] = amountNear.split(".");
+    const paddedFraction = fraction.padEnd(24, "0").slice(0, 24);
+    const yoctoStr = (whole + paddedFraction).replace(/^0+/, "") || "0";
+    const amountYocto = BigInt(new BN(yoctoStr).toString());
+    const transaction = buildTransferTransaction(
+      treasuryAccount,
+      publicKey,
+      nonce,
+      accountId,
+      blockHash,
+      amountYocto,
+      bs582
+    );
+    const txHash = createHash("sha256").update(transaction).digest();
+    const signature = nacl2.default.sign.detached(txHash, secretKey);
+    const signedTx = buildSignedTransaction(transaction, signature, publicKey);
+    const submitResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "send-tx",
+        method: "broadcast_tx_commit",
+        params: [Buffer.from(signedTx).toString("base64")]
+      })
+    });
+    const submitResult = await submitResponse.json();
+    if (submitResult.error) {
+      log2.error({ err: new Error(submitResult.error.data || submitResult.error.message || "Transaction failed") }, "Transaction error");
+      return {
+        success: false,
+        error: submitResult.error.data || submitResult.error.message || "Transaction failed"
+      };
+    }
+    const resultHash = submitResult.result?.transaction?.hash || "unknown";
+    log2.info({ accountId, txHash: resultHash }, "Funded account");
+    return { success: true, txHash: resultHash };
+  } catch (error) {
+    log2.error({ err: error }, "Treasury funding failed");
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
+}
+function buildTransferTransaction(signerId, publicKey, nonce, receiverId, blockHash, amount, bs583) {
+  const parts = [];
+  parts.push(serializeString(signerId));
+  parts.push(new Uint8Array([0]));
+  parts.push(new Uint8Array(publicKey));
+  parts.push(serializeU64(BigInt(nonce)));
+  parts.push(serializeString(receiverId));
+  parts.push(bs583.decode(blockHash));
+  parts.push(serializeU32(1));
+  parts.push(new Uint8Array([3]));
+  parts.push(serializeU128(amount));
+  return concatArrays(parts);
+}
+function buildSignedTransaction(transaction, signature, publicKey) {
+  const parts = [];
+  parts.push(transaction);
+  parts.push(new Uint8Array([0]));
+  parts.push(new Uint8Array(publicKey));
+  parts.push(new Uint8Array(signature));
+  return concatArrays(parts);
+}
+function serializeString(str) {
+  const bytes = Buffer.from(str, "utf8");
+  const len = serializeU32(bytes.length);
+  return concatArrays([len, bytes]);
+}
+function serializeU32(num) {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32LE(num);
+  return buf;
+}
+function serializeU64(num) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(num);
+  return buf;
+}
+function serializeU128(num) {
+  const buf = Buffer.alloc(16);
+  buf.writeBigUInt64LE(num & BigInt("0xFFFFFFFFFFFFFFFF"), 0);
+  buf.writeBigUInt64LE(num >> BigInt(64), 8);
+  return buf;
+}
+function concatArrays(arrays) {
+  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+var warnedNoDerivationSalt = false;
+var MPCAccountManager = class {
+  networkId;
+  mpcContractId;
+  accountPrefix;
+  treasuryAccount;
+  treasuryPrivateKey;
+  fundingAmount;
+  derivationSalt;
+  log;
+  constructor(config) {
+    this.networkId = config.networkId;
+    this.mpcContractId = getMPCContractId(config.networkId);
+    this.accountPrefix = config.accountPrefix || "anon";
+    this.treasuryAccount = config.treasuryAccount;
+    this.treasuryPrivateKey = config.treasuryPrivateKey;
+    this.fundingAmount = config.fundingAmount || "0.01";
+    this.derivationSalt = config.derivationSalt;
+    this.log = (config.logger ?? pino3({ level: "silent" })).child({ module: "mpc" });
+  }
+  /**
+   * Create a new NEAR account for an anonymous user
+   */
+  async createAccount(userId) {
+    const accountName = generateAccountName(userId, this.accountPrefix);
+    const suffix = this.networkId === "mainnet" ? ".near" : ".testnet";
+    const nearAccountId = `${accountName}${suffix}`;
+    const derivationPath = `near-anon-auth,${userId}`;
+    this.log.info({ nearAccountId, network: this.networkId }, "Creating NEAR account");
+    try {
+      if (!this.derivationSalt && !warnedNoDerivationSalt) {
+        this.log.warn("No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.");
+        warnedNoDerivationSalt = true;
+      }
+      const seedInput = this.derivationSalt ? `implicit-${this.derivationSalt}-${userId}` : `implicit-${userId}`;
+      const seed = createHash("sha256").update(seedInput).digest();
+      const publicKeyBytes = derivePublicKey(seed);
+      const implicitAccountId = publicKeyBytes.toString("hex");
+      const publicKey = `ed25519:${bs582.encode(publicKeyBytes)}`;
+      this.log.info({ accountId: implicitAccountId, network: this.networkId }, "Created implicit account");
+      const alreadyExists = await accountExists(implicitAccountId, this.networkId);
+      if (alreadyExists) {
+        this.log.info({ accountId: implicitAccountId }, "Implicit account already funded");
+        return {
+          nearAccountId: implicitAccountId,
+          derivationPath,
+          mpcPublicKey: publicKey,
+          onChain: true
+        };
+      }
+      let onChain = false;
+      if (this.treasuryAccount && this.treasuryPrivateKey) {
+        this.log.info({ accountId: implicitAccountId }, "Funding implicit account from treasury");
+        const fundResult = await fundAccountFromTreasury(
+          implicitAccountId,
+          this.treasuryAccount,
+          this.treasuryPrivateKey,
+          this.fundingAmount,
+          this.networkId,
+          this.log
+        );
+        if (fundResult.success) {
+          this.log.info({ txHash: fundResult.txHash }, "Account funded");
+          onChain = true;
+        } else {
+          this.log.warn({ err: new Error(fundResult.error) }, "Funding failed, account will be dormant");
+        }
+      } else {
+        this.log.warn("No treasury configured, account will be dormant until funded");
+      }
+      return {
+        nearAccountId: implicitAccountId,
+        derivationPath,
+        mpcPublicKey: publicKey,
+        onChain
+      };
+    } catch (error) {
+      this.log.error({ err: error }, "Mainnet implicit account creation failed");
+      return {
+        nearAccountId,
+        derivationPath,
+        mpcPublicKey: "creation-failed",
+        onChain: false
+      };
+    }
+  }
+  /**
+   * Add a recovery wallet as an access key to the MPC account
+   *
+   * This creates an on-chain link without storing it in our database.
+   * The recovery wallet can be used to prove ownership and create new passkeys.
+   *
+   * @param nearAccountId - The user's NEAR implicit account ID
+   * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
+   */
+  async addRecoveryWallet(nearAccountId, recoveryWalletPublicKey) {
+    this.log.info({ nearAccountId }, "Adding recovery wallet via AddKey transaction");
+    if (!this.treasuryPrivateKey) {
+      this.log.error("No treasury private key configured \u2014 cannot sign AddKey transaction");
+      return { success: false };
+    }
+    try {
+      const rpcUrl = getRPCUrl(this.networkId);
+      const keyPair = KeyPair.fromString(this.treasuryPrivateKey);
+      const signer = new KeyPairSigner(keyPair);
+      const signerPublicKey = await signer.getPublicKey();
+      const signerPublicKeyStr = signerPublicKey.toString();
+      const accessKeyResponse = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "get-access-key",
+          method: "query",
+          params: {
+            request_type: "view_access_key",
+            finality: "final",
+            account_id: nearAccountId,
+            public_key: signerPublicKeyStr
+          }
+        })
+      });
+      const accessKeyResult = await accessKeyResponse.json();
+      if (accessKeyResult.error || !accessKeyResult.result) {
+        this.log.error(
+          { err: new Error(JSON.stringify(accessKeyResult.error)) },
+          "Could not fetch access key for AddKey transaction"
+        );
+        return { success: false };
+      }
+      const nonce = BigInt(accessKeyResult.result.nonce) + 1n;
+      const blockHashBytes = bs582.decode(accessKeyResult.result.block_hash);
+      const { addKey, fullAccessKey } = actionCreators;
+      const recoveryPublicKey = PublicKey.fromString(recoveryWalletPublicKey);
+      const action = addKey(recoveryPublicKey, fullAccessKey());
+      const tx = createTransaction(
+        nearAccountId,
+        // signerId
+        signerPublicKey,
+        // must match signer.getPublicKey()
+        nearAccountId,
+        // receiverId (adding key to user's own account)
+        nonce,
+        [action],
+        blockHashBytes
+        // Uint8Array, NOT base58 string
+      );
+      const [, signedTx] = await signer.signTransaction(tx);
+      const encoded = Buffer.from(signedTx.encode()).toString("base64");
+      const submitResponse = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "send-tx",
+          method: "broadcast_tx_commit",
+          params: [encoded]
+        })
+      });
+      const submitResult = await submitResponse.json();
+      if (submitResult.error) {
+        this.log.error(
+          { err: new Error(submitResult.error.data || submitResult.error.message || "Transaction failed") },
+          "AddKey transaction broadcast failed"
+        );
+        return { success: false };
+      }
+      const txHash = submitResult.result?.transaction?.hash || "unknown";
+      this.log.info({ nearAccountId, txHash }, "Recovery wallet added via AddKey");
+      return { success: true, txHash };
+    } catch (error) {
+      this.log.error({ err: error }, "addRecoveryWallet failed");
+      return { success: false };
+    }
+  }
+  /**
+   * Verify that a wallet has recovery access to an account by checking the
+   * specific recovery wallet public key via view_access_key RPC.
+   *
+   * Returns false when account has keys but none match the recovery wallet key.
+   *
+   * @param nearAccountId - The user's NEAR implicit account ID
+   * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
+   */
+  async verifyRecoveryWallet(nearAccountId, recoveryWalletPublicKey) {
+    try {
+      return await checkWalletAccess(nearAccountId, recoveryWalletPublicKey, this.networkId);
+    } catch {
+      this.log.error({ nearAccountId }, "Recovery wallet verification failed");
+      return false;
+    }
+  }
+  /**
+   * Get MPC contract ID
+   */
+  getMPCContractId() {
+    return this.mpcContractId;
+  }
+  /**
+   * Get network ID
+   */
+  getNetworkId() {
+    return this.networkId;
+  }
+};
+function createMPCManager(config) {
+  return new MPCAccountManager(config);
 }
 var scryptAsync = promisify(scrypt);
 async function deriveKey(password, salt) {
@@ -1303,23 +1606,21 @@ async function fetchFromIPFS(cid) {
     `https://cloudflare-ipfs.com/ipfs/${cid}`,
     `https://dweb.link/ipfs/${cid}`
   ];
-  for (const gateway of gateways) {
-    try {
-      const response = await fetch(gateway, {
-        headers: {
-          "Accept": "application/octet-stream"
-        }
-      });
-      if (response.ok) {
-        return new Uint8Array(await response.arrayBuffer());
-      }
-    } catch {
-      continue;
-    }
+  const fetchGateway = async (url) => {
+    const response = await fetch(url, {
+      headers: { Accept: "application/octet-stream" }
+    });
+    if (!response.ok) throw new Error(`Gateway ${url} returned ${response.status}`);
+    return new Uint8Array(await response.arrayBuffer());
+  };
+  try {
+    return await Promise.any(gateways.map(fetchGateway));
+  } catch {
+    throw new Error("Failed to fetch from IPFS - tried all gateways");
   }
-  throw new Error("Failed to fetch from IPFS - tried all gateways");
 }
 function createIPFSRecoveryManager(config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "ipfs-recovery" });
   const MIN_PASSWORD_LENGTH = 12;
   async function pinData(data) {
     if (config.customPin) {
@@ -1374,7 +1675,7 @@ function createIPFSRecoveryManager(config) {
       const encrypted = await encryptRecoveryData(payload, password);
       const data = new TextEncoder().encode(JSON.stringify(encrypted));
       const cid = await pinData(data);
-      console.log(`[IPFS] Recovery backup created: ${cid} (${config.pinningService})`);
+      log2.info({ cid, pinningService: config.pinningService }, "Recovery backup created");
       return { cid };
     },
     async recoverFromBackup(cid, password) {
@@ -1480,10 +1781,14 @@ function createOAuthManager(config, db) {
         expiresAt: new Date(Date.now() + 10 * 60 * 1e3)
         // 10 minutes
       };
-      stateStore.set(state, oauthState);
-      for (const [key, value] of stateStore.entries()) {
-        if (value.expiresAt < /* @__PURE__ */ new Date()) {
-          stateStore.delete(key);
+      if (db.storeOAuthState) {
+        await db.storeOAuthState(oauthState);
+      } else {
+        stateStore.set(state, oauthState);
+        for (const [key, value] of stateStore.entries()) {
+          if (value.expiresAt < /* @__PURE__ */ new Date()) {
+            stateStore.delete(key);
+          }
         }
       }
       return { url, state, codeVerifier };
@@ -1632,34 +1937,217 @@ function createOAuthManager(config, db) {
       }
     },
     async validateState(state) {
-      const oauthState = stateStore.get(state);
-      if (!oauthState) {
-        return null;
-      }
-      if (oauthState.expiresAt < /* @__PURE__ */ new Date()) {
+      if (db.getOAuthState) {
+        const record = await db.getOAuthState(state);
+        if (!record) return null;
+        if (record.expiresAt < /* @__PURE__ */ new Date()) {
+          await db.deleteOAuthState?.(state);
+          return null;
+        }
+        await db.deleteOAuthState?.(state);
+        return {
+          provider: record.provider,
+          state: record.state,
+          codeVerifier: record.codeVerifier,
+          redirectUri: record.redirectUri,
+          expiresAt: record.expiresAt
+        };
+      } else {
+        const oauthState = stateStore.get(state);
+        if (!oauthState) return null;
+        if (oauthState.expiresAt < /* @__PURE__ */ new Date()) {
+          stateStore.delete(state);
+          return null;
+        }
         stateStore.delete(state);
-        return null;
+        return oauthState;
       }
-      stateStore.delete(state);
-      return oauthState;
     }
   };
 }
+function createEmailService(config, log2) {
+  const client = new SESClient({
+    region: config.region,
+    ...config.accessKeyId && {
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey
+      }
+    }
+  });
+  return {
+    async sendRecoveryPassword(toEmail, recoveryPassword) {
+      const command = new SendEmailCommand({
+        Source: config.fromAddress,
+        Destination: { ToAddresses: [toEmail] },
+        Message: {
+          Subject: { Data: "Your NEAR Account Recovery Password" },
+          Body: {
+            Text: {
+              Data: `Your recovery password is: ${recoveryPassword}
+
+Store this securely. You will need it to recover your account if you lose your device.`
+            }
+          }
+        }
+      });
+      try {
+        await client.send(command);
+        log2.info({ to: toEmail }, "Recovery password email sent");
+      } catch (err) {
+        log2.error({ err }, "Failed to send recovery email");
+        throw err;
+      }
+    }
+  };
+}
+
+// src/server/validation/validateBody.ts
+function validateBody(schema, req, res) {
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({
+      error: result.error.issues[0]?.message ?? "Invalid request body"
+    });
+    return null;
+  }
+  return result.data;
+}
+var registerStartBodySchema = z.object({});
+var registerFinishBodySchema = z.object({
+  challengeId: z.string().min(1),
+  tempUserId: z.string().min(1),
+  codename: z.string().min(1),
+  sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  response: z.object({
+    id: z.string().min(1),
+    rawId: z.string().min(1),
+    type: z.literal("public-key"),
+    response: z.object({
+      clientDataJSON: z.string().min(1),
+      attestationObject: z.string().min(1)
+    }).passthrough(),
+    // allow transports, publicKeyAlgorithm, etc.
+    // z.object({}).catchall(z.unknown()) is the correct Zod 4 pattern for
+    // AuthenticationExtensionsClientOutputs — an object with arbitrary unknown keys.
+    // z.record(z.unknown()) has a bug in Zod 4.3.6 when values are nested objects.
+    clientExtensionResults: z.object({}).catchall(z.unknown())
+  }).passthrough()
+  // allow authenticatorAttachment and other vendor keys
+});
+var loginStartBodySchema = z.object({
+  codename: z.string().min(1).optional()
+});
+var loginFinishBodySchema = z.object({
+  challengeId: z.string().min(1),
+  sealingKeyHex: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  response: z.object({
+    id: z.string().min(1),
+    rawId: z.string().min(1),
+    type: z.literal("public-key"),
+    response: z.object({
+      clientDataJSON: z.string().min(1),
+      authenticatorData: z.string().min(1),
+      signature: z.string().min(1),
+      userHandle: z.string().optional()
+    }).passthrough(),
+    // allow vendor keys in inner response
+    clientExtensionResults: z.object({}).catchall(z.unknown())
+  }).passthrough()
+  // allow authenticatorAttachment and other vendor keys
+});
+var logoutBodySchema = z.object({});
+var walletLinkBodySchema = z.object({});
+var walletVerifyBodySchema = z.object({
+  signature: z.object({
+    signature: z.string().min(1),
+    publicKey: z.string().min(1),
+    message: z.string().min(1)
+  }),
+  challenge: z.string().min(1),
+  walletAccountId: z.string().min(1)
+});
+var walletStartBodySchema = z.object({});
+var walletFinishBodySchema = z.object({
+  signature: z.object({
+    signature: z.string().min(1),
+    publicKey: z.string().min(1),
+    message: z.string().min(1)
+  }),
+  challenge: z.string().min(1),
+  nearAccountId: z.string().min(1)
+});
+var ipfsSetupBodySchema = z.object({
+  password: z.string().min(1)
+});
+var ipfsRecoverBodySchema = z.object({
+  cid: z.string().min(1),
+  password: z.string().min(1)
+});
+var oauthCallbackBodySchema = z.object({
+  code: z.string().min(1),
+  state: z.string().min(1)
+});
+var oauthLinkBodySchema = z.object({
+  code: z.string().min(1),
+  state: z.string().min(1).optional(),
+  codeVerifier: z.string().min(1).optional()
+});
+
+// src/server/oauth/router.ts
 function createOAuthRouter(config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "oauth" });
   const router = Router();
   const {
     db,
     sessionManager,
     mpcManager,
     oauthConfig,
-    ipfsRecovery
+    ipfsRecovery,
+    emailService
   } = config;
-  const oauthManager = createOAuthManager(
+  const authRateConfig = config.rateLimiting?.auth ?? {};
+  const authLimiter = rateLimit({
+    windowMs: authRateConfig.windowMs ?? 15 * 60 * 1e3,
+    limit: authRateConfig.limit ?? 20,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log2.warn({ limit: options.limit }, "auth rate limit exceeded");
+      res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+  });
+  router.use(cookieParser());
+  if (config.csrf) {
+    const { doubleCsrfProtection } = doubleCsrf({
+      getSecret: () => config.csrf.secret,
+      getSessionIdentifier: (req) => req.ip ?? "",
+      cookieName: "__Host-csrf",
+      cookieOptions: {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: true,
+        path: "/"
+      },
+      ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+      getCsrfTokenFromRequest: (req) => req.headers["x-csrf-token"],
+      // OAuth callback arrives cross-origin from provider; cannot carry CSRF cookie.
+      // OAuth flow uses state parameter validation as its own CSRF defense.
+      skipCsrfProtection: (req) => {
+        return /^\/[^/]+\/callback$/.test(req.path);
+      }
+    });
+    router.use(doubleCsrfProtection);
+    log2.info("CSRF protection enabled for OAuth router (callback exempt)");
+  }
+  const oauthManager = config.oauthManager ?? createOAuthManager(
     {
       google: oauthConfig.google,
       github: oauthConfig.github,
       twitter: oauthConfig.twitter
-    });
+    },
+    db
+  );
   router.use(json());
   router.get("/providers", (_req, res) => {
     res.json({
@@ -1670,7 +2158,7 @@ function createOAuthRouter(config) {
       }
     });
   });
-  router.get("/:provider/start", async (req, res) => {
+  router.get("/:provider/start", authLimiter, async (req, res) => {
     try {
       const provider = req.params.provider;
       if (!["google", "github", "twitter"].includes(provider)) {
@@ -1698,22 +2186,29 @@ function createOAuthRouter(config) {
       });
       return res.json({ url, state });
     } catch (error) {
-      console.error("[OAuth] Start error:", error);
+      log2.error({ err: error }, "OAuth start error");
       return res.status(500).json({ error: "Failed to start OAuth flow" });
     }
   });
-  router.post("/:provider/callback", async (req, res) => {
+  router.post("/:provider/callback", authLimiter, async (req, res) => {
     try {
-      const provider = req.params.provider;
-      const { code, state } = req.body;
-      if (!code || !state) {
-        return res.status(400).json({ error: "Missing code or state" });
+      if (req.cookies === void 0) {
+        log2.error(
+          "OAuth callback received request without req.cookies. Mount cookie-parser middleware before the OAuth router: app.use(cookieParser())"
+        );
+        return res.status(500).json({
+          error: "Server configuration error: cookie-parser middleware is required"
+        });
       }
-      const storedState = req.cookies?.oauth_state;
-      if (state !== storedState) {
+      const body = validateBody(oauthCallbackBodySchema, req, res);
+      if (!body) return;
+      const provider = req.params.provider;
+      const { code, state } = body;
+      const oauthState = await oauthManager.validateState(state);
+      if (!oauthState) {
         return res.status(400).json({ error: "Invalid state" });
       }
-      const codeVerifier = req.cookies?.oauth_code_verifier;
+      const codeVerifier = oauthState.codeVerifier;
       res.clearCookie("oauth_state");
       res.clearCookie("oauth_code_verifier");
       const redirectUri = `${oauthConfig.callbackBaseUrl}/${provider}`;
@@ -1806,9 +2301,18 @@ function createOAuthRouter(config) {
             reference: cid,
             createdAt: /* @__PURE__ */ new Date()
           });
-          console.log("[OAuth] Recovery backup created for new user:", cid);
+          log2.info({ cid }, "Recovery backup created for new user");
+          if (emailService && profile.email) {
+            try {
+              await emailService.sendRecoveryPassword(profile.email, recoveryPassword);
+            } catch (emailErr) {
+              log2.warn({ err: emailErr }, "Recovery email send failed \u2014 user registered but password not emailed");
+            }
+          } else if (!emailService) {
+            log2.info("Email service not configured \u2014 recovery password not sent");
+          }
         } catch (error) {
-          console.error("[OAuth] Failed to create recovery backup:", error);
+          log2.error({ err: error }, "Failed to create recovery backup");
         }
       }
       await sessionManager.createSession(newUser.id, res, {
@@ -1828,21 +2332,20 @@ function createOAuthRouter(config) {
         isNewUser: true
       });
     } catch (error) {
-      console.error("[OAuth] Callback error:", error);
+      log2.error({ err: error }, "OAuth callback error");
       return res.status(500).json({ error: "OAuth authentication failed" });
     }
   });
-  router.post("/:provider/link", async (req, res) => {
+  router.post("/:provider/link", authLimiter, async (req, res) => {
     try {
       const session = await sessionManager.getSession(req);
       if (!session) {
         return res.status(401).json({ error: "Authentication required" });
       }
+      const body = validateBody(oauthLinkBodySchema, req, res);
+      if (!body) return;
       const provider = req.params.provider;
-      const { code, state, codeVerifier } = req.body;
-      if (!code) {
-        return res.status(400).json({ error: "Missing code" });
-      }
+      const { code, state, codeVerifier } = body;
       const redirectUri = `${oauthConfig.callbackBaseUrl}/${provider}`;
       const tokens = await oauthManager.exchangeCode(provider, code, redirectUri, codeVerifier);
       const profile = await oauthManager.getProfile(provider, tokens.accessToken);
@@ -1864,15 +2367,14 @@ function createOAuthRouter(config) {
         message: `${provider} account linked successfully`
       });
     } catch (error) {
-      console.error("[OAuth] Link error:", error);
+      log2.error({ err: error }, "OAuth link error");
       return res.status(500).json({ error: "Failed to link provider" });
     }
   });
   return router;
 }
-
-// src/server/middleware.ts
-function createAuthMiddleware(sessionManager, db) {
+function createAuthMiddleware(sessionManager, db, logger) {
+  const log2 = (logger ?? pino3({ level: "silent" })).child({ module: "middleware" });
   return async (req, res, next) => {
     try {
       const session = await sessionManager.getSession(req);
@@ -1886,12 +2388,13 @@ function createAuthMiddleware(sessionManager, db) {
       }
       next();
     } catch (error) {
-      console.error("[AnonAuth] Middleware error:", error);
+      log2.error({ err: error }, "Middleware error");
       next();
     }
   };
 }
-function createRequireAuth(sessionManager, db) {
+function createRequireAuth(sessionManager, db, logger) {
+  const log2 = (logger ?? pino3({ level: "silent" })).child({ module: "middleware" });
   return async (req, res, next) => {
     try {
       const session = await sessionManager.getSession(req);
@@ -1907,7 +2410,7 @@ function createRequireAuth(sessionManager, db) {
       await sessionManager.refreshSession(req, res);
       next();
     } catch (error) {
-      console.error("[AnonAuth] Auth check error:", error);
+      log2.error({ err: error }, "Auth check error");
       res.status(500).json({ error: "Authentication check failed" });
     }
   };
@@ -1999,9 +2502,10 @@ function randomPick(array) {
   return array[bytes[0] % array.length];
 }
 function generateNatoCodename() {
-  const word = randomPick(NATO_PHONETIC);
+  const word1 = randomPick(NATO_PHONETIC);
+  const word2 = randomPick(NATO_PHONETIC);
   const num = randomSuffix();
-  return `${word}-${num}`;
+  return `${word1}-${word2}-${num}`;
 }
 function generateAnimalCodename() {
   const adj = randomPick(ADJECTIVES);
@@ -2020,13 +2524,14 @@ function generateCodename(style = "nato-phonetic") {
   }
 }
 function isValidCodename(codename) {
-  const natoPattern = /^[A-Z]+-\d{1,2}$/;
+  const natoPattern = /^[A-Z]+(?:-[A-Z]+)?-\d{1,2}$/;
   const animalPattern = /^[A-Z]+-[A-Z]+-\d{1,2}$/;
   return natoPattern.test(codename) || animalPattern.test(codename);
 }
 
 // src/server/router.ts
 function createRouter(config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "router" });
   const router = Router();
   const {
     db,
@@ -2036,9 +2541,54 @@ function createRouter(config) {
     walletRecovery,
     ipfsRecovery
   } = config;
+  const authRateConfig = config.rateLimiting?.auth ?? {};
+  const recoveryRateConfig = config.rateLimiting?.recovery ?? {};
+  const authLimiter = rateLimit({
+    windowMs: authRateConfig.windowMs ?? 15 * 60 * 1e3,
+    limit: authRateConfig.limit ?? 20,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log2.warn({ limit: options.limit }, "auth rate limit exceeded");
+      res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+  });
+  const recoveryLimiter = rateLimit({
+    windowMs: recoveryRateConfig.windowMs ?? 60 * 60 * 1e3,
+    limit: recoveryRateConfig.limit ?? 5,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log2.warn({ limit: options.limit }, "recovery rate limit exceeded");
+      res.status(429).json({ error: "Too many recovery attempts. Please try again later." });
+    }
+  });
+  if (config.csrf) {
+    const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+      getSecret: () => config.csrf.secret,
+      getSessionIdentifier: (req) => req.ip ?? "",
+      cookieName: "__Host-csrf",
+      cookieOptions: {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: true,
+        path: "/"
+      },
+      ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+      getCsrfTokenFromRequest: (req) => req.headers["x-csrf-token"]
+    });
+    router.use(cookieParser());
+    router.use(doubleCsrfProtection);
+    router.get("/csrf-token", (req, res) => {
+      res.json({ token: generateCsrfToken(req, res) });
+    });
+    log2.info("CSRF protection enabled");
+  }
   router.use(json());
-  router.post("/register/start", async (req, res) => {
+  router.post("/register/start", authLimiter, async (req, res) => {
     try {
+      const body = validateBody(registerStartBodySchema, req, res);
+      if (!body) return;
       const tempUserId = crypto.randomUUID();
       const style = config.codename?.style || "nato-phonetic";
       let codename;
@@ -2066,16 +2616,15 @@ function createRouter(config) {
         tempUserId
       });
     } catch (error) {
-      console.error("[AnonAuth] Registration start error:", error);
+      log2.error({ err: error }, "Registration start error");
       res.status(500).json({ error: "Registration failed" });
     }
   });
-  router.post("/register/finish", async (req, res) => {
+  router.post("/register/finish", authLimiter, async (req, res) => {
     try {
-      const { challengeId, response, tempUserId, codename } = req.body;
-      if (!challengeId || !response || !tempUserId || !codename) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
+      const body = validateBody(registerFinishBodySchema, req, res);
+      if (!body) return;
+      const { challengeId, response, tempUserId, codename } = body;
       if (!isValidCodename(codename)) {
         return res.status(400).json({ error: "Invalid codename format" });
       }
@@ -2087,38 +2636,44 @@ function createRouter(config) {
         return res.status(400).json({ error: "Passkey verification failed" });
       }
       const mpcAccount = await mpcManager.createAccount(tempUserId);
-      const user = await db.createUser({
-        codename,
-        nearAccountId: mpcAccount.nearAccountId,
-        mpcPublicKey: mpcAccount.mpcPublicKey,
-        derivationPath: mpcAccount.derivationPath
-      });
-      await db.createPasskey({
-        credentialId: passkeyData.credentialId,
-        userId: user.id,
-        publicKey: passkeyData.publicKey,
-        counter: passkeyData.counter,
-        deviceType: passkeyData.deviceType,
-        backedUp: passkeyData.backedUp,
-        transports: passkeyData.transports
-      });
-      const session = await sessionManager.createSession(user.id, res, {
-        ipAddress: req.ip,
-        userAgent: req.headers["user-agent"]
-      });
+      const doRegistration = async (adapter) => {
+        const user2 = await adapter.createUser({
+          codename,
+          nearAccountId: mpcAccount.nearAccountId,
+          mpcPublicKey: mpcAccount.mpcPublicKey,
+          derivationPath: mpcAccount.derivationPath
+        });
+        await adapter.createPasskey({
+          credentialId: passkeyData.credentialId,
+          userId: user2.id,
+          publicKey: passkeyData.publicKey,
+          counter: passkeyData.counter,
+          deviceType: passkeyData.deviceType,
+          backedUp: passkeyData.backedUp,
+          transports: passkeyData.transports
+        });
+        const session = await sessionManager.createSession(user2.id, res, {
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"]
+        });
+        return { user: user2, session };
+      };
+      const { user } = db.transaction ? await db.transaction(doRegistration) : await doRegistration(db);
       res.json({
         success: true,
         codename: user.codename,
         nearAccountId: user.nearAccountId
       });
     } catch (error) {
-      console.error("[AnonAuth] Registration finish error:", error);
+      log2.error({ err: error }, "Registration finish error");
       res.status(500).json({ error: "Registration failed" });
     }
   });
-  router.post("/login/start", async (req, res) => {
+  router.post("/login/start", authLimiter, async (req, res) => {
     try {
-      const { codename } = req.body;
+      const body = validateBody(loginStartBodySchema, req, res);
+      if (!body) return;
+      const { codename } = body;
       let userId;
       if (codename) {
         const user = await db.getUserByCodename(codename);
@@ -2130,16 +2685,15 @@ function createRouter(config) {
       const { challengeId, options } = await passkeyManager.startAuthentication(userId);
       res.json({ challengeId, options });
     } catch (error) {
-      console.error("[AnonAuth] Login start error:", error);
+      log2.error({ err: error }, "Login start error");
       res.status(500).json({ error: "Login failed" });
     }
   });
-  router.post("/login/finish", async (req, res) => {
+  router.post("/login/finish", authLimiter, async (req, res) => {
     try {
-      const { challengeId, response } = req.body;
-      if (!challengeId || !response) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
+      const body = validateBody(loginFinishBodySchema, req, res);
+      if (!body) return;
+      const { challengeId, response } = body;
       const { verified, userId } = await passkeyManager.finishAuthentication(
         challengeId,
         response
@@ -2160,16 +2714,18 @@ function createRouter(config) {
         codename: user.codename
       });
     } catch (error) {
-      console.error("[AnonAuth] Login finish error:", error);
+      log2.error({ err: error }, "Login finish error");
       res.status(500).json({ error: "Authentication failed" });
     }
   });
-  router.post("/logout", async (req, res) => {
+  router.post("/logout", authLimiter, async (req, res) => {
     try {
+      const body = validateBody(logoutBodySchema, req, res);
+      if (!body) return;
       await sessionManager.destroySession(req, res);
       res.json({ success: true });
     } catch (error) {
-      console.error("[AnonAuth] Logout error:", error);
+      log2.error({ err: error }, "Logout error");
       res.status(500).json({ error: "Logout failed" });
     }
   });
@@ -2190,13 +2746,15 @@ function createRouter(config) {
         expiresAt: session.expiresAt
       });
     } catch (error) {
-      console.error("[AnonAuth] Session check error:", error);
+      log2.error({ err: error }, "Session check error");
       res.status(500).json({ error: "Session check failed" });
     }
   });
   if (walletRecovery) {
-    router.post("/recovery/wallet/link", async (req, res) => {
+    router.post("/recovery/wallet/link", recoveryLimiter, async (req, res) => {
       try {
+        const body = validateBody(walletLinkBodySchema, req, res);
+        if (!body) return;
         const session = await sessionManager.getSession(req);
         if (!session) {
           return res.status(401).json({ error: "Authentication required" });
@@ -2215,21 +2773,20 @@ function createRouter(config) {
           expiresAt: expiresAt.toISOString()
         });
       } catch (error) {
-        console.error("[AnonAuth] Wallet link error:", error);
+        log2.error({ err: error }, "Wallet link error");
         res.status(500).json({ error: "Failed to initiate wallet link" });
       }
     });
-    router.post("/recovery/wallet/verify", async (req, res) => {
+    router.post("/recovery/wallet/verify", recoveryLimiter, async (req, res) => {
       try {
         const session = await sessionManager.getSession(req);
         if (!session) {
           return res.status(401).json({ error: "Authentication required" });
         }
-        const { signature, challenge, walletAccountId } = req.body;
-        if (!signature || !challenge || !walletAccountId) {
-          return res.status(400).json({ error: "Missing required fields" });
-        }
-        const { verified, walletId } = walletRecovery.verifyLinkSignature(
+        const body = validateBody(walletVerifyBodySchema, req, res);
+        if (!body) return;
+        const { signature, challenge, walletAccountId } = body;
+        const { verified } = walletRecovery.verifyLinkSignature(
           signature,
           challenge
         );
@@ -2240,12 +2797,11 @@ function createRouter(config) {
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
-        await mpcManager.addRecoveryWallet(user.nearAccountId, walletAccountId);
+        await mpcManager.addRecoveryWallet(user.nearAccountId, signature.publicKey);
         await db.storeRecoveryData({
           userId: user.id,
           type: "wallet",
-          reference: "enabled",
-          // We don't store the wallet ID!
+          reference: signature.publicKey,
           createdAt: /* @__PURE__ */ new Date()
         });
         res.json({
@@ -2253,28 +2809,29 @@ function createRouter(config) {
           message: "Wallet linked for recovery. The link is stored on-chain, not in our database."
         });
       } catch (error) {
-        console.error("[AnonAuth] Wallet verify error:", error);
+        log2.error({ err: error }, "Wallet verify error");
         res.status(500).json({ error: "Failed to verify wallet" });
       }
     });
-    router.post("/recovery/wallet/start", async (req, res) => {
+    router.post("/recovery/wallet/start", recoveryLimiter, async (req, res) => {
       try {
+        const body = validateBody(walletStartBodySchema, req, res);
+        if (!body) return;
         const { challenge, expiresAt } = walletRecovery.generateRecoveryChallenge();
         res.json({
           challenge,
           expiresAt: expiresAt.toISOString()
         });
       } catch (error) {
-        console.error("[AnonAuth] Wallet recovery start error:", error);
+        log2.error({ err: error }, "Wallet recovery start error");
         res.status(500).json({ error: "Failed to start recovery" });
       }
     });
-    router.post("/recovery/wallet/finish", async (req, res) => {
+    router.post("/recovery/wallet/finish", recoveryLimiter, async (req, res) => {
       try {
-        const { signature, challenge, nearAccountId } = req.body;
-        if (!signature || !challenge || !nearAccountId) {
-          return res.status(400).json({ error: "Missing required fields" });
-        }
+        const body = validateBody(walletFinishBodySchema, req, res);
+        if (!body) return;
+        const { signature, challenge, nearAccountId } = body;
         const { verified } = await walletRecovery.verifyRecoverySignature(
           signature,
           challenge,
@@ -2297,22 +2854,21 @@ function createRouter(config) {
           message: "Recovery successful. You can now register a new passkey."
         });
       } catch (error) {
-        console.error("[AnonAuth] Wallet recovery finish error:", error);
+        log2.error({ err: error }, "Wallet recovery finish error");
         res.status(500).json({ error: "Recovery failed" });
       }
     });
   }
   if (ipfsRecovery) {
-    router.post("/recovery/ipfs/setup", async (req, res) => {
+    router.post("/recovery/ipfs/setup", recoveryLimiter, async (req, res) => {
       try {
         const session = await sessionManager.getSession(req);
         if (!session) {
           return res.status(401).json({ error: "Authentication required" });
         }
-        const { password } = req.body;
-        if (!password) {
-          return res.status(400).json({ error: "Password required" });
-        }
+        const body = validateBody(ipfsSetupBodySchema, req, res);
+        if (!body) return;
+        const { password } = body;
         const validation = ipfsRecovery.validatePassword(password);
         if (!validation.valid) {
           return res.status(400).json({
@@ -2345,16 +2901,15 @@ function createRouter(config) {
           message: "Backup created. Save this CID with your password - you need both to recover."
         });
       } catch (error) {
-        console.error("[AnonAuth] IPFS setup error:", error);
+        log2.error({ err: error }, "IPFS setup error");
         res.status(500).json({ error: "Failed to create backup" });
       }
     });
-    router.post("/recovery/ipfs/recover", async (req, res) => {
+    router.post("/recovery/ipfs/recover", recoveryLimiter, async (req, res) => {
       try {
-        const { cid, password } = req.body;
-        if (!cid || !password) {
-          return res.status(400).json({ error: "CID and password required" });
-        }
+        const body = validateBody(ipfsRecoverBodySchema, req, res);
+        if (!body) return;
+        const { cid, password } = body;
         let payload;
         try {
           payload = await ipfsRecovery.recoverFromBackup(cid, password);
@@ -2375,13 +2930,78 @@ function createRouter(config) {
           message: "Recovery successful. You can now register a new passkey."
         });
       } catch (error) {
-        console.error("[AnonAuth] IPFS recovery error:", error);
+        log2.error({ err: error }, "IPFS recovery error");
         res.status(500).json({ error: "Recovery failed" });
       }
     });
   }
+  router.post("/account/reregister-passkey", authLimiter, async (req, res) => {
+    try {
+      const session = await sessionManager.getSession(req);
+      if (!session) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const user = await db.getUserById(session.userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const { challengeId, options } = await passkeyManager.startRegistration(
+        user.id,
+        user.codename
+      );
+      res.json({ challengeId, options });
+    } catch (error) {
+      log2.error({ err: error }, "Passkey re-registration error");
+      res.status(500).json({ error: "Failed to start re-registration" });
+    }
+  });
+  router.delete("/account", authLimiter, async (req, res) => {
+    try {
+      const session = await sessionManager.getSession(req);
+      if (!session) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (!db.deleteUser) {
+        return res.status(501).json({ error: "Account deletion not supported by database adapter" });
+      }
+      const userId = session.userId;
+      await sessionManager.destroySession(req, res);
+      await db.deleteUserSessions(userId);
+      if (db.deleteRecoveryData) {
+        await db.deleteRecoveryData(userId);
+      }
+      await db.deleteUser(userId);
+      res.json({ success: true });
+    } catch (error) {
+      log2.error({ err: error }, "Account deletion error");
+      res.status(500).json({ error: "Account deletion failed" });
+    }
+  });
   return router;
 }
+
+// src/server/cleanup.ts
+function createCleanupScheduler(db, log2, intervalMs = 5 * 60 * 1e3) {
+  const handle = setInterval(async () => {
+    try {
+      const sessions = await db.cleanExpiredSessions();
+      const challenges = await db.cleanExpiredChallenges?.() ?? 0;
+      const oauthStates = await db.cleanExpiredOAuthStates?.() ?? 0;
+      if (sessions > 0 || challenges > 0 || oauthStates > 0) {
+        log2.info({ sessions, challenges, oauthStates }, "Cleanup complete");
+      }
+    } catch (err) {
+      log2.error({ err }, "Cleanup failed");
+    }
+  }, intervalMs);
+  handle.unref();
+  return {
+    stop() {
+      clearInterval(handle);
+    }
+  };
+}
+var log = pino3({ level: "silent" }).child({ module: "webauthn" });
 async function createRegistrationOptions(input) {
   const {
     rpName,
@@ -2444,7 +3064,7 @@ async function verifyRegistration(input) {
       }
     };
   } catch (error) {
-    console.error("[WebAuthn] Registration verification error:", error);
+    log.error({ err: error }, "Registration verification error");
     return {
       verified: false,
       error: error instanceof Error ? error.message : "Verification failed"
@@ -2491,7 +3111,7 @@ async function verifyAuthentication(input) {
       newCounter: verification.authenticationInfo.newCounter
     };
   } catch (error) {
-    console.error("[WebAuthn] Authentication verification error:", error);
+    log.error({ err: error }, "Authentication verification error");
     return {
       verified: false,
       error: error instanceof Error ? error.message : "Verification failed"
@@ -2516,6 +3136,7 @@ function uint8ArrayToBase64url(bytes) {
 
 // src/server/index.ts
 function createAnonAuth(config) {
+  const logger = config.logger ?? pino3({ level: "silent" });
   let db;
   if (config.database.adapter) {
     db = config.database.adapter;
@@ -2536,7 +3157,8 @@ function createAnonAuth(config) {
   }
   const sessionManager = createSessionManager(db, {
     secret: config.sessionSecret,
-    durationMs: config.sessionDurationMs
+    durationMs: config.sessionDurationMs,
+    logger
   });
   const rpConfig = config.rp || {
     name: "Anonymous Auth",
@@ -2546,24 +3168,35 @@ function createAnonAuth(config) {
   const passkeyManager = createPasskeyManager(db, {
     rpName: rpConfig.name,
     rpId: rpConfig.id,
-    origin: rpConfig.origin
+    origin: rpConfig.origin,
+    logger
   });
   const mpcManager = createMPCManager({
     networkId: config.nearNetwork,
     accountPrefix: config.mpc?.accountPrefix || "anon",
     treasuryAccount: config.mpc?.treasuryAccount,
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
-    fundingAmount: config.mpc?.fundingAmount
+    fundingAmount: config.mpc?.fundingAmount,
+    derivationSalt: config.mpc?.derivationSalt ?? config.derivationSalt,
+    logger
   });
   let walletRecovery;
   let ipfsRecovery;
   if (config.recovery?.wallet) {
     walletRecovery = createWalletRecoveryManager({
-      nearNetwork: config.nearNetwork
+      nearNetwork: config.nearNetwork,
+      logger
     });
   }
   if (config.recovery?.ipfs) {
-    ipfsRecovery = createIPFSRecoveryManager(config.recovery.ipfs);
+    ipfsRecovery = createIPFSRecoveryManager({
+      ...config.recovery.ipfs,
+      logger
+    });
+  }
+  let emailService;
+  if (config.email) {
+    emailService = createEmailService(config.email, logger);
   }
   let oauthManager;
   let oauthRouter;
@@ -2573,17 +3206,24 @@ function createAnonAuth(config) {
         google: config.oauth.google,
         github: config.oauth.github,
         twitter: config.oauth.twitter
-      });
+      },
+      db
+    );
     oauthRouter = createOAuthRouter({
       db,
       sessionManager,
       mpcManager,
       oauthConfig: config.oauth,
-      ipfsRecovery
+      ipfsRecovery,
+      emailService,
+      logger,
+      rateLimiting: config.rateLimiting,
+      csrf: config.csrf,
+      oauthManager
     });
   }
-  const middleware = createAuthMiddleware(sessionManager, db);
-  const requireAuth = createRequireAuth(sessionManager, db);
+  const middleware = createAuthMiddleware(sessionManager, db, logger);
+  const requireAuth = createRequireAuth(sessionManager, db, logger);
   const router = createRouter({
     db,
     sessionManager,
@@ -2591,7 +3231,10 @@ function createAnonAuth(config) {
     mpcManager,
     walletRecovery,
     ipfsRecovery,
-    codename: config.codename
+    codename: config.codename,
+    logger,
+    rateLimiting: config.rateLimiting,
+    csrf: config.csrf
   });
   return {
     router,
@@ -2611,6 +3254,6 @@ function createAnonAuth(config) {
   };
 }
 
-export { POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration };
+export { POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

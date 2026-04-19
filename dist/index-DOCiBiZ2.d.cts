@@ -1,6 +1,29 @@
+import pino from 'pino';
+
 /**
  * Core types for near-anon-auth
  */
+
+interface RateLimitConfig {
+    /** Auth endpoint rate limit config (login, register, logout, OAuth) */
+    auth?: {
+        /** Window duration in ms (default: 15 * 60 * 1000 = 15 min) */
+        windowMs?: number;
+        /** Max requests per window per IP (default: 20) */
+        limit?: number;
+    };
+    /** Recovery endpoint rate limit config (stricter than auth) */
+    recovery?: {
+        /** Window duration in ms (default: 60 * 60 * 1000 = 1 hour) */
+        windowMs?: number;
+        /** Max requests per window per IP (default: 5) */
+        limit?: number;
+    };
+}
+interface CsrfConfig {
+    /** Secret for HMAC token signing. Must NOT be the same as sessionSecret. */
+    secret: string;
+}
 interface AnonAuthConfig {
     /** NEAR network: 'testnet' | 'mainnet' */
     nearNetwork: 'testnet' | 'mainnet';
@@ -23,10 +46,47 @@ interface AnonAuthConfig {
         /** Origin for WebAuthn (e.g., https://example.com) */
         origin: string;
     };
+    /** Passkey / PRF configuration (WebAuthn Level 3 PRF extension) */
+    passkey?: {
+        /**
+         * PRF salt for DEK sealing key derivation.
+         * Must be byte-identical across all registrations and logins for the same credential — one byte
+         * of difference produces a different 32-byte PRF output and destroys DEK access for existing users.
+         * Defaults to the library-internal constant 'near-phantom-auth-prf-v1'.
+         * Server-side documentation only — the library does not use this value at runtime on the server;
+         * the actual PRF ceremony runs in the browser. Mirror this value in AnonAuthProviderProps.passkey.
+         */
+        prfSalt?: Uint8Array;
+        /**
+         * If true, refuse registration/login when the authenticator does not support the PRF extension.
+         * Defaults to false (graceful degradation — the ceremony completes without sealingKeyHex).
+         */
+        requirePrf?: boolean;
+    };
     /** OAuth provider configuration */
     oauth?: OAuthConfig;
     /** MPC account configuration */
     mpc?: MPCAccountConfig;
+    /** Server-side secret salt for NEAR account derivation. Recommended for production to prevent account ID prediction. */
+    derivationSalt?: string;
+    /** Optional pino logger instance. If omitted, logging is disabled (no output). */
+    logger?: pino.Logger;
+    /** Optional rate limiting configuration. Applied per-route with sensible defaults. */
+    rateLimiting?: RateLimitConfig;
+    /** Optional CSRF protection (Double Submit Cookie). Disabled by default. */
+    csrf?: CsrfConfig;
+    /** AWS SES email configuration for sending recovery passwords to OAuth users.
+     *  When absent, recovery passwords are not emailed (backup still created). */
+    email?: {
+        /** AWS SES region (e.g., 'us-east-1') */
+        region: string;
+        /** AWS access key ID (optional — uses instance profile if omitted) */
+        accessKeyId?: string;
+        /** AWS secret access key (required when accessKeyId is provided) */
+        secretAccessKey?: string;
+        /** Verified sender email address or domain identity in SES */
+        fromAddress: string;
+    };
 }
 interface MPCAccountConfig {
     /** Treasury account for auto-funding new accounts */
@@ -37,6 +97,8 @@ interface MPCAccountConfig {
     fundingAmount?: string;
     /** Account name prefix (default: 'anon') */
     accountPrefix?: string;
+    /** Server-side secret salt for NEAR account derivation (forwarded from AnonAuthConfig) */
+    derivationSalt?: string;
 }
 interface OAuthConfig {
     /** OAuth callback base URL (e.g., https://myapp.com/auth/callback) */
@@ -58,7 +120,7 @@ interface OAuthConfig {
     };
 }
 interface DatabaseConfig {
-    type: 'postgres' | 'sqlite' | 'custom';
+    type: 'postgres' | 'custom';
     connectionString?: string;
     /** Custom adapter for database operations */
     adapter?: DatabaseAdapter;
@@ -109,6 +171,32 @@ interface DatabaseAdapter {
     deleteChallenge(challengeId: string): Promise<void>;
     storeRecoveryData(data: RecoveryData): Promise<void>;
     getRecoveryData(userId: string, type: RecoveryType): Promise<RecoveryData | null>;
+    updateSessionExpiry?(sessionId: string, newExpiresAt: Date): Promise<void>;
+    /** Optional: wrap multiple operations in a database transaction.
+     *  If not implemented, operations execute sequentially (no atomicity guarantee). */
+    transaction?<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T>;
+    /** Optional: delete a user by ID. Passkeys cascade via FK; sessions and recovery must be deleted first. */
+    deleteUser?(userId: string): Promise<void>;
+    /** Optional: delete all recovery data for a user. */
+    deleteRecoveryData?(userId: string): Promise<void>;
+    /** Optional: store OAuth state for cross-instance durability. */
+    storeOAuthState?(state: OAuthStateRecord): void | Promise<void>;
+    /** Optional: retrieve and consume OAuth state by state key. */
+    getOAuthState?(stateKey: string): Promise<OAuthStateRecord | null>;
+    /** Optional: delete OAuth state (consumed or expired). */
+    deleteOAuthState?(stateKey: string): Promise<void>;
+    /** Optional: clean expired WebAuthn challenges. Returns count deleted. */
+    cleanExpiredChallenges?(): Promise<number>;
+    /** Optional: clean expired OAuth states. Returns count deleted. */
+    cleanExpiredOAuthStates?(): Promise<number>;
+}
+/** Minimal OAuth state record stored in the database to enable cross-instance durability. */
+interface OAuthStateRecord {
+    provider: string;
+    state: string;
+    codeVerifier?: string;
+    redirectUri: string;
+    expiresAt: Date;
 }
 /**
  * User type enumeration
@@ -319,4 +407,4 @@ declare global {
     }
 }
 
-export type { AuthenticationStartResponse as A, CodenameConfig as C, DatabaseAdapter as D, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, Session as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, AuthenticatorTransport as f, Passkey as g, AnonAuthConfig as h, AnonUser as i, OAuthProvider as j, OAuthUser as k, UserType as l, RecoveryConfig as m, RecoveryData as n, RecoveryType as o };
+export type { AuthenticationStartResponse as A, CsrfConfig as C, DatabaseAdapter as D, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, Session as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, AuthenticatorTransport as f, Passkey as g, RateLimitConfig as h, AnonAuthConfig as i, AnonUser as j, OAuthProvider as k, OAuthUser as l, UserType as m, CodenameConfig as n, RecoveryConfig as o, RecoveryData as p, RecoveryType as q };
