@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Scalability, Tech Debt, and Email** - Move OAuth state to DB, add cleanup, expand codenames, fix N+1 queries, wire AWS SES (completed 2026-03-14)
 - [x] **Phase 7: Test Coverage** - Unit and integration tests for all hardened code paths; zero gaps in security-critical modules
 - [ ] **Phase 8: Wire OAuth Callback to DB-Backed State Validation** - Replace cookie-based OAuth state comparison with DB-backed validateState(); fix unconditional cookieParser mounting
+- [ ] **Phase 9: WebAuthn PRF Extension for DEK Sealing Key** - Derive 32-byte sealing key per credential via WebAuthn PRF extension; thread sealingKeyHex through finish endpoints; bump 0.5.3 to 0.6.0
 
 ## Phase Details
 
@@ -163,3 +164,23 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. Scalability, Tech Debt, and Email | 4/4 | Complete   | 2026-03-14 |
 | 7. Test Coverage | 4/4 | Complete   | 2026-03-14 |
 | 8. Wire OAuth Callback to DB-Backed State Validation | 0/1 | Not Started | — |
+| 9. WebAuthn PRF Extension for DEK Sealing Key | 0/3 | Not Started | — |
+
+### Phase 9: WebAuthn PRF Extension for DEK Sealing Key
+**Goal**: Library derives a stable 32-byte sealing key per credential via the WebAuthn PRF extension, hex-encodes it, and includes `sealingKeyHex` in POST bodies to `/register/finish` and `/login/finish` so a downstream auth-service can provision and unwrap per-user DEKs. Gracefully degrades on PRF-unsupported browsers; opt-in `requirePrf` enforcement available.
+**Depends on**: Phase 8
+**Requirements**: PRF-01, PRF-02, PRF-03, PRF-04, PRF-05, PRF-06, PRF-07, PRF-08, PRF-09, PRF-10, PRF-11, PRF-12
+**Success Criteria** (what must be TRUE):
+  1. `createPasskey()` and `authenticateWithPasskey()` request the PRF extension when called with `prfOptions.salt` and return `sealingKeyHex` (64 lowercase hex chars) for PRF-supported authenticators
+  2. The same credential + same salt produces identical `sealingKeyHex` across registration and every subsequent login (round-trip determinism via deterministic HMAC test mock)
+  3. POST `/register/finish` and POST `/login/finish` bodies include `sealingKeyHex` ONLY when defined; the field is OMITTED entirely (not sent as `null`) when PRF is unsupported
+  4. Server-side zod schema validates `sealingKeyHex` as `/^[0-9a-f]{64}$/` and rejects wrong length, uppercase hex, or non-hex characters
+  5. `<AnonAuthProvider passkey={{ requirePrf: true }}>` causes `register()`/`login()` to throw an error starting with `PRF_NOT_SUPPORTED` when the authenticator returns no PRF result; default `requirePrf=false` completes the ceremony without `sealingKeyHex`
+  6. Default salt `near-phantom-auth-prf-v1` is a module-level constant in `useAnonAuth.tsx` and documented as a permanent deployment commitment
+  7. `package.json` version is `0.6.0`; `package-lock.json` contains zero `0.5.3` references
+  8. README documents salt immutability, browser support matrix, and the NULL key-bundle migration approach
+**Plans**: 3 plans
+Plans:
+- [ ] 09-01-PLAN.md — Type contracts (PasskeyConfig), zod schema validation for sealingKeyHex, prf.test.ts scaffold with deterministic HMAC mock factory
+- [ ] 09-02-PLAN.md — Client PRF ceremony (createPasskey + authenticateWithPasskey extension wiring + hex extraction); api.ts spread-conditional body threading
+- [ ] 09-03-PLAN.md — useAnonAuth.tsx PRF wiring + requirePrf rejection + DEFAULT_PRF_SALT; package.json/lockfile bump 0.5.3 -> 0.6.0; README PRF section
