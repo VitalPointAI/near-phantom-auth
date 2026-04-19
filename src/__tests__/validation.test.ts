@@ -132,6 +132,54 @@ describe('registerFinishBodySchema', () => {
     const result = registerFinishBodySchema.safeParse({ ...validRegisterFinishBody, challengeId: '' });
     expect(result.success).toBe(false);
   });
+
+  describe('sealingKeyHex (PRF-08)', () => {
+    const validBody = {
+      challengeId: 'ch-1',
+      tempUserId: 'tmp-1',
+      codename: 'ALPHA-7',
+      response: {
+        id: 'cred-1',
+        rawId: 'cred-1',
+        type: 'public-key' as const,
+        response: {
+          clientDataJSON: 'client-data',
+          attestationObject: 'att-obj',
+        },
+        clientExtensionResults: {},
+      },
+    };
+
+    it('accepts body without sealingKeyHex (PRF unsupported graceful degradation)', () => {
+      const result = registerFinishBodySchema.safeParse(validBody);
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts body with valid 64-char lowercase hex sealingKeyHex', () => {
+      const result = registerFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(64) });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects sealingKeyHex of 63 chars', () => {
+      const result = registerFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(63) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex of 65 chars', () => {
+      const result = registerFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(65) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex with uppercase hex characters', () => {
+      const result = registerFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'A'.repeat(64) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex with non-hex characters', () => {
+      const result = registerFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'g'.repeat(64) });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -210,6 +258,53 @@ describe('loginFinishBodySchema', () => {
     };
     const result = loginFinishBodySchema.safeParse(body);
     expect(result.success).toBe(true);
+  });
+
+  describe('sealingKeyHex (PRF-08)', () => {
+    const validBody = {
+      challengeId: 'ch-1',
+      response: {
+        id: 'cred-1',
+        rawId: 'cred-1',
+        type: 'public-key' as const,
+        response: {
+          clientDataJSON: 'client-data',
+          authenticatorData: 'auth-data',
+          signature: 'sig',
+        },
+        clientExtensionResults: {},
+      },
+    };
+
+    it('accepts body without sealingKeyHex (PRF unsupported graceful degradation)', () => {
+      const result = loginFinishBodySchema.safeParse(validBody);
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts body with valid 64-char lowercase hex sealingKeyHex', () => {
+      const result = loginFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(64) });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects sealingKeyHex of 63 chars', () => {
+      const result = loginFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(63) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex of 65 chars', () => {
+      const result = loginFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'a'.repeat(65) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex with uppercase hex characters', () => {
+      const result = loginFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'A'.repeat(64) });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects sealingKeyHex with non-hex characters', () => {
+      const result = loginFinishBodySchema.safeParse({ ...validBody, sealingKeyHex: 'g'.repeat(64) });
+      expect(result.success).toBe(false);
+    });
   });
 });
 
