@@ -211,7 +211,14 @@ Plans:
   4. `grep -r treasuryPrivateKey dist/` produces no log or console calls; a structured-log fixture captured during `createAccount` excludes the treasury private key at every log level; no `near-cli` shell-out occurs
   5. All 12 spec scenarios T1–T12 pass under `npm test` (first-call provision, second-call idempotency, distinct userId/salt isolation, RPC failure throws, treasury-underfunded throws, recovery verification matrix, concurrent-call convergence, hex-format assertion)
   6. `npm publish` succeeds at v0.6.1 and a fresh consumer can `npm install`, import, instantiate, and call `createAccount` against a testnet treasury end-to-end
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 10-01-PLAN.md — Surgical export fix in src/server/index.ts + exports.test.ts regression gate (MPC-01)
+- [ ] 10-02-PLAN.md — Wave-0 mpc-account-manager.test.ts scaffold with T1-T12 it.todo placeholders (test infra for MPC-02..MPC-06, MPC-10, MPC-11)
+- [ ] 10-03-PLAN.md — checkWalletAccess FullAccess permission gate + wallet.test.ts MPC-05 cases (MPC-04, MPC-05)
+- [ ] 10-04-PLAN.md — MPCAccountManager class hardening (KeyPair field, parseNearAmount, throw paths, nonce-race convergence) + populate T1-T12 (MPC-02, MPC-03, MPC-06, MPC-08, MPC-09, MPC-10, MPC-11)
+- [ ] 10-05-PLAN.md — Treasury leak audit (Pino redact + dist grep + log-stream fixture + type-level salt enforcement) (MPC-07, MPC-09)
+- [ ] 10-06-PLAN.md — Bump to 0.6.1, CHANGELOG.md, README.md MPCAccountManager section, npm publish, smoke install (MPC-12; autonomous: false)
 
 ### v0.6.1 Progress
 
@@ -220,4 +227,4 @@ Phase 10 is the sole phase of milestone v0.6.1.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. MPCAccountManager | 0/5 | Not Started | — |
+| 10. MPCAccountManager | 0/6 | Not Started | — |
