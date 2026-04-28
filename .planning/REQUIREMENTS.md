@@ -24,7 +24,7 @@ Hotfix milestone — single-phase, additive only. Ships missing `MPCAccountManag
 
 ### Security
 
-- [ ] **MPC-09**: The treasury private key is never logged (no `console.*`, no pino message containing it), never written to disk, and never exposed via any API surface. Pino redaction config covers `config.treasuryPrivateKey` and any nested holder. Transactions are signed in-process — no `near-cli` shell-out. A single `KeyStore` is constructed per `MPCAccountManager` instance.
+- [ ] **MPC-09**: The treasury private key is never logged (no `console.*`, no pino message containing it), never written to disk, and never exposed via any API surface. Pino redaction config covers `config.treasuryPrivateKey` and any nested holder. Transactions are signed in-process — no `near-cli` shell-out. The treasury key is materialized exactly once into a private `KeyPair` field on the `MPCAccountManager` instance and is never re-stringified at module scope; both signing call sites (`fundAccountFromTreasury`, `addRecoveryWallet`) accept the `KeyPair` object directly so the raw private-key string never re-appears on the call stack. (This satisfies the original "single KeyStore per instance" intent — key isolation per instance — without introducing an async factory; reconciled 2026-04-28 to keep the v0.6.1 constructor synchronous and the FROZEN consumer contract intact.)
 - [ ] **MPC-10**: Error paths throw with cause where appropriate (RPC unreachable, transfer failed, treasury underfunded) so consumer routes can return 500. `verifyRecoveryWallet` swallows "account not found" (returns `false`); only RPC unreachable throws.
 
 ### Testing
