@@ -1,11 +1,43 @@
-# Requirements: near-phantom-auth Hardening
+# Requirements: near-phantom-auth
 
-**Defined:** 2026-03-14
+**Originally defined:** 2026-03-14
+**v0.6.1 milestone added:** 2026-04-28
 **Core Value:** Every security-sensitive code path must be correct, tested, and production-safe
 
-## v1 Requirements
+## v0.6.1 Requirements (Active)
 
-Requirements for this hardening milestone. Each maps to roadmap phases.
+Hotfix milestone — single-phase, additive only. Ships missing `MPCAccountManager` to unblock Ledgera mpc-sidecar production restart loop. Contract is FROZEN by consumer pin: renaming any field, method, or return-shape key requires a coordinated PR with the consumer.
+
+### MPCAccountManager Class (MPC)
+
+- [ ] **MPC-01**: `MPCAccountManager` class is exported from `@vitalpoint/near-phantom-auth/server` in both ESM (`dist/server/index.js`) and CJS (`dist/server/index.cjs`); `MPCAccountManager`, `MPCAccountManagerConfig`, and `CreateAccountResult` types are exported from `dist/server/index.d.ts`. All v0.6.0 exports remain unchanged.
+- [ ] **MPC-02**: `createAccount(userId)` is a pure function of `(treasuryAccount, userId, derivationSalt)` — calling it twice with the same `userId` returns identical `nearAccountId`, `mpcPublicKey`, and `derivationPath`. The derivation function is documented in the README.
+- [ ] **MPC-03**: `createAccount(userId)` is idempotent and atomic. The implementation queries `view_account` first and short-circuits with `onChain=true` when the account already exists. A second call against a provisioned account does NOT issue a duplicate funding transfer.
+- [ ] **MPC-04**: `nearAccountId` returned from every `createAccount` call matches `/^[a-f0-9]{64}$/` (64-char lowercase-hex implicit-account ID). Named accounts are NOT supported in this version.
+- [ ] **MPC-05**: `verifyRecoveryWallet(nearAccountId, publicKey)` returns `true` if and only if the public key is currently registered on the account's access-key list AND has full-access permissions. Function-call-only access keys return `false`. Non-existent accounts return `false` (do NOT throw). Signature verification is NOT performed by this method — that is the consumer's second step.
+- [ ] **MPC-06**: Concurrent `createAccount(sameUserId)` calls from two replicas converge to identical results with exactly one on-chain transfer. The loser of a nonce race retries `view_account` once and returns success.
+
+### Configuration & Conversion
+
+- [ ] **MPC-07**: `MPCAccountManagerConfig.derivationSalt` is REQUIRED. Two consumers using the same treasury but different salts produce distinct `nearAccountId` values for the same `userId` (cross-tenant isolation).
+- [ ] **MPC-08**: `fundingAmount` is a decimal-string in NEAR (default `"0.01"`); the implementation converts to yoctoNEAR via `parseNearAmount` from `near-api-js`. RPC URL selection is driven by `networkId` (`mainnet`/`testnet`).
+
+### Security
+
+- [ ] **MPC-09**: The treasury private key is never logged (no `console.*`, no pino message containing it), never written to disk, and never exposed via any API surface. Pino redaction config covers `config.treasuryPrivateKey` and any nested holder. Transactions are signed in-process — no `near-cli` shell-out. A single `KeyStore` is constructed per `MPCAccountManager` instance.
+- [ ] **MPC-10**: Error paths throw with cause where appropriate (RPC unreachable, transfer failed, treasury underfunded) so consumer routes can return 500. `verifyRecoveryWallet` swallows "account not found" (returns `false`); only RPC unreachable throws.
+
+### Testing
+
+- [ ] **MPC-11**: Test suite covers all 12 scenarios from the spec (T1–T12): first call provisions, second call short-circuits, distinct userIds and salts produce distinct accounts, RPC failure throws, treasury-underfunded throws, recovery wallet verification matrix (full-access true / function-call-only false / missing account false / unrelated key false), concurrent-call convergence, and hex-format assertion. Testnet integration tests for T1, T2, T7, T11; unit tests with RPC mocks for the remainder.
+
+### Release
+
+- [ ] **MPC-12**: README documents the class, derivation function, and security expectations. CHANGELOG entry calls out the additive surface. `npm publish` succeeds at v0.6.1, and a fresh consumer can `npm install`, `import { MPCAccountManager } from '@vitalpoint/near-phantom-auth/server'`, instantiate, and call `createAccount` against a testnet treasury — succeeds end-to-end.
+
+## v0.5 Requirements (Shipped)
+
+Hardening milestone — 35/35 satisfied per `.planning/v0.5-MILESTONE-AUDIT.md` (2026-03-15).
 
 ### Security
 
@@ -66,27 +98,47 @@ Requirements for this hardening milestone. Each maps to roadmap phases.
 - [x] **TEST-07**: Integration tests for registration and authentication flows
 - [x] **TEST-08**: Integration tests for recovery flows
 
-## v2 Requirements
+### v0.6.0 (PRF Extension — Phase 9)
 
-Deferred to future release. Tracked but not in current roadmap.
+12 PRF-* requirements satisfied; library bumped from v0.5.x to v0.6.0. See `.planning/phases/09-add-webauthn-prf-extension-support-for-dek-sealing-key-deriv/` for traceability.
 
-### Enhanced Security
+## Future Requirements (post-v0.6.1)
+
+Deferred to future milestones. Tracked but not in current roadmap.
+
+### v0.7.0 — Forward-looking additive items (next milestone)
+
+- **V07-01**: Backup-eligibility flag exposure (Ledgera spec)
+- **V07-02**: Second-factor enrolment hook (Ledgera spec)
+- **V07-03**: Lazy-backfill hook (Ledgera spec)
+- **V07-04**: Multi-RP_ID verification (Ledgera spec)
+- **V07-05**: Registration analytics hook (Ledgera spec)
+
+### Enhanced Security (v2 / undated)
 
 - **ESEC-01**: Pluggable rate limit store (Redis) for multi-instance deployments
 - **ESEC-02**: WebAuthn `userVerification: 'required'` configuration option
 - **ESEC-03**: TypeScript strict mode enabled across codebase
 
-### User Management
+### User Management (v2 / undated)
 
 - **UMGT-01**: Passkey management endpoint (list and revoke individual passkeys)
 - **UMGT-02**: Session management endpoint (list active sessions, revoke specific devices)
+
+### MPCAccountManager — additive options (post-v0.6.1)
+
+- **MPC-EXT-01**: Optional `rpcUrl?: string` config field for self-hosted RPC override (cheap to include in v0.7.x)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
+| Renaming any field/method/return-shape on `MPCAccountManager` | Contract FROZEN by consumer pin |
+| Returning named accounts (e.g. `user.namespace.near`) from `createAccount` | Consumer's contract test greps for `/^[a-f0-9]{64}$/`; would be major-version break |
+| Performing signature verification inside `verifyRecoveryWallet` | Consumer's two-step flow runs `tweetnacl.sign.detached.verify` separately |
+| Shelling out to `near-cli` for transaction signing | Keys must not be reachable via `process.exec` injection |
 | New authentication methods | Hardening existing, not expanding attack surface |
-| SQLite adapter | Removing the type declaration instead |
+| SQLite adapter | Type declaration removed in v0.5 |
 | Mobile/native SDK | Web-only library |
 | UI components | Library provides hooks, consumers own UI |
 | Real-time features | Not relevant to auth |
@@ -94,6 +146,25 @@ Deferred to future release. Tracked but not in current roadmap.
 | PII collection in anonymous track | Core privacy constraint |
 
 ## Traceability
+
+### v0.6.1 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MPC-01 | TBD | Pending |
+| MPC-02 | TBD | Pending |
+| MPC-03 | TBD | Pending |
+| MPC-04 | TBD | Pending |
+| MPC-05 | TBD | Pending |
+| MPC-06 | TBD | Pending |
+| MPC-07 | TBD | Pending |
+| MPC-08 | TBD | Pending |
+| MPC-09 | TBD | Pending |
+| MPC-10 | TBD | Pending |
+| MPC-11 | TBD | Pending |
+| MPC-12 | TBD | Pending |
+
+### v0.5 (Shipped)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -132,12 +203,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-06 | Phase 7 | Complete |
 | TEST-07 | Phase 7 | Complete |
 | TEST-08 | Phase 7 | Complete |
+| PRF-* (12) | Phase 9 | Complete |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 35
-- Unmapped: 0
+- v0.5: 35 / 35 mapped (Phase 9 added 12 PRF-*; total satisfied = 47)
+- v0.6.1: 12 active requirements; phase mapping deferred to roadmapper
 
 ---
-*Requirements defined: 2026-03-14*
-*Last updated: 2026-03-14 after roadmap creation — all 35 requirements mapped*
+*v0.5 milestone defined: 2026-03-14, closed 2026-03-15 audit*
+*v0.6.1 milestone defined: 2026-04-28*
