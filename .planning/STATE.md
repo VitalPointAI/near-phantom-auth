@@ -1,36 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.5
-milestone_name: milestone
-status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-19T23:36:50.468Z"
-last_activity: 2026-04-19
+milestone: v0.6.1
+milestone_name: MPCAccountManager hotfix
+status: planning
+last_updated: "2026-04-28T20:06:55.696Z"
+last_activity: 2026-04-28
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 25
-  completed_plans: 25
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-14)
+See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 09 — add-webauthn-prf-extension-support-for-dek-sealing-key-deriv
+**Current focus:** Milestone v0.6.1 — ship `MPCAccountManager` to unblock Ledgera mpc-sidecar (BLOCKING; consumer in production restart loop on v0.6.0)
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
-Status: Executing Phase 09
-Last activity: 2026-04-19
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-28 — Milestone v0.6.1 started
 
 ## Performance Metrics
 
