@@ -22,6 +22,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 8: Wire OAuth Callback to DB-Backed State Validation** - Replace cookie-based OAuth state comparison with DB-backed validateState(); fix unconditional cookieParser mounting
 - [ ] **Phase 9: WebAuthn PRF Extension for DEK Sealing Key** - Derive 32-byte sealing key per credential via WebAuthn PRF extension; thread sealingKeyHex through finish endpoints; bump 0.5.3 to 0.6.0
 
+### Milestone v0.6.1 — MPCAccountManager Hotfix
+
+- [ ] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class to unblock Ledgera mpc-sidecar production restart loop; additive only, contract FROZEN by consumer pin
+
 ## Phase Details
 
 ### Phase 1: Atomic Security Fixes
@@ -184,3 +188,36 @@ Plans:
 - [x] 09-01-PLAN.md — Type contracts (PasskeyConfig), zod schema validation for sealingKeyHex, prf.test.ts scaffold with deterministic HMAC mock factory
 - [x] 09-02-PLAN.md — Client PRF ceremony (createPasskey + authenticateWithPasskey extension wiring + hex extraction); api.ts spread-conditional body threading
 - [x] 09-03-PLAN.md — useAnonAuth.tsx PRF wiring + requirePrf rejection + DEFAULT_PRF_SALT; package.json/lockfile bump 0.5.3 -> 0.6.0; README PRF section
+
+---
+
+## Milestone v0.6.1 — MPCAccountManager Hotfix
+
+**Context:** v0.5 milestone closed 35/35 requirements satisfied (library at v0.6.0). v0.6.1 is a single-phase, additive-only hotfix to unblock a downstream consumer (Ledgera mpc-sidecar) in a production restart loop. The `MPCAccountManager` class was missing from `@vitalpoint/near-phantom-auth/server`. Contract is FROZEN by consumer pin — no field, method, or return-shape renames.
+
+**Phases:**
+
+- [ ] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class (createAccount + verifyRecoveryWallet) with idempotency, nonce safety, treasury key redaction, T1-T12 test coverage, and npm publish v0.6.1
+
+### Phase 10: MPCAccountManager
+
+**Goal**: A downstream consumer can `import { MPCAccountManager } from '@vitalpoint/near-phantom-auth/server'`, instantiate with treasury credentials and a derivation salt, call `createAccount(userId)` idempotently, call `verifyRecoveryWallet(nearAccountId, publicKey)` safely, and never risk leaking the treasury private key — all covered by T1–T12 tests and published as v0.6.1
+**Depends on**: Phase 9 (v0.6.0 base; this phase extends /server exports additively)
+**Requirements**: MPC-01, MPC-02, MPC-03, MPC-04, MPC-05, MPC-06, MPC-07, MPC-08, MPC-09, MPC-10, MPC-11, MPC-12
+**Success Criteria** (what must be TRUE):
+  1. A consumer can `import { MPCAccountManager } from '@vitalpoint/near-phantom-auth/server'` and the class is defined with the FROZEN contract (`createAccount`, `verifyRecoveryWallet`, `MPCAccountManagerConfig`, `CreateAccountResult` types); all v0.6.0 exports remain unchanged
+  2. Calling `createAccount('alice')` twice with the same config returns identical `nearAccountId`, `mpcPublicKey`, and `derivationPath`; the `nearAccountId` matches `/^[a-f0-9]{64}$/`; the second call short-circuits via `view_account` and issues exactly zero additional on-chain transfers
+  3. `verifyRecoveryWallet(account, functionCallKey)` returns `false`; `verifyRecoveryWallet(deletedAccount, key)` returns `false` without throwing; `verifyRecoveryWallet(account, fullAccessKey)` returns `true`
+  4. `grep -r treasuryPrivateKey dist/` produces no log or console calls; a structured-log fixture captured during `createAccount` excludes the treasury private key at every log level; no `near-cli` shell-out occurs
+  5. All 12 spec scenarios T1–T12 pass under `npm test` (first-call provision, second-call idempotency, distinct userId/salt isolation, RPC failure throws, treasury-underfunded throws, recovery verification matrix, concurrent-call convergence, hex-format assertion)
+  6. `npm publish` succeeds at v0.6.1 and a fresh consumer can `npm install`, import, instantiate, and call `createAccount` against a testnet treasury end-to-end
+**Plans**: TBD
+
+### v0.6.1 Progress
+
+**Execution Order:**
+Phase 10 is the sole phase of milestone v0.6.1.
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 10. MPCAccountManager | 0/5 | Not Started | — |

@@ -151,18 +151,18 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MPC-01 | TBD | Pending |
-| MPC-02 | TBD | Pending |
-| MPC-03 | TBD | Pending |
-| MPC-04 | TBD | Pending |
-| MPC-05 | TBD | Pending |
-| MPC-06 | TBD | Pending |
-| MPC-07 | TBD | Pending |
-| MPC-08 | TBD | Pending |
-| MPC-09 | TBD | Pending |
-| MPC-10 | TBD | Pending |
-| MPC-11 | TBD | Pending |
-| MPC-12 | TBD | Pending |
+| MPC-01 | Phase 10 | Pending |
+| MPC-02 | Phase 10 | Pending |
+| MPC-03 | Phase 10 | Pending |
+| MPC-04 | Phase 10 | Pending |
+| MPC-05 | Phase 10 | Pending |
+| MPC-06 | Phase 10 | Pending |
+| MPC-07 | Phase 10 | Pending |
+| MPC-08 | Phase 10 | Pending |
+| MPC-09 | Phase 10 | Pending |
+| MPC-10 | Phase 10 | Pending |
+| MPC-11 | Phase 10 | Pending |
+| MPC-12 | Phase 10 | Pending |
 
 ### v0.5 (Shipped)
 
@@ -207,7 +207,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 **Coverage:**
 - v0.5: 35 / 35 mapped (Phase 9 added 12 PRF-*; total satisfied = 47)
-- v0.6.1: 12 active requirements; phase mapping deferred to roadmapper
+- v0.6.1: 12 / 12 mapped — all to Phase 10
 
 ---
 *v0.5 milestone defined: 2026-03-14, closed 2026-03-15 audit*

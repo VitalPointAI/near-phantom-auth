@@ -6,9 +6,9 @@ status: planning
 last_updated: "2026-04-28T20:06:55.696Z"
 last_activity: 2026-04-28
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-04-28)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 10 — MPCAccountManager (roadmap complete; ready for planning)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-28 — Milestone v0.6.1 started
+Status: Roadmap created; awaiting `/gsd-plan-phase 10`
+Last activity: 2026-04-28 — Roadmap created for v0.6.1 (1 phase, 12 requirements mapped)
 
 ## Performance Metrics
 
@@ -139,6 +139,7 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 9 added: WebAuthn PRF extension support for DEK sealing key derivation (sealingKeyHex wire format, prfSalt/requirePrf options, v0.6.0 feature-add)
+- Phase 10 added: MPCAccountManager hotfix (v0.6.1 milestone; additive only; contract FROZEN by consumer pin; 12 MPC-* requirements mapped)
 
 ### Pending Todos
 
