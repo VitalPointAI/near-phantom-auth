@@ -689,22 +689,22 @@ describe.skipIf(!HAVE_TESTNET)('T1: first call provisions (testnet integration)'
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Async KeyStore setKey vs synchronous KeyPair field**
+1. **Async KeyStore setKey vs synchronous KeyPair field** — **RESOLVED 2026-04-28**
    - What we know: `InMemoryKeyStore.setKey` is async; constructors cannot be async in TypeScript
-   - What's unclear: Whether MPC-09 "a single KeyStore is constructed per instance" means literally `new InMemoryKeyStore()` or just "isolated key storage"
-   - Recommendation: Store `KeyPair` object directly in private field (synchronous; satisfies key isolation intent); if planner needs literal InMemoryKeyStore, use a static async factory
+   - What was unclear: Whether MPC-09 "a single KeyStore is constructed per instance" means literally `new InMemoryKeyStore()` or just "isolated key storage"
+   - **Resolution:** REQUIREMENTS.md MPC-09 was rewritten to specify the four security/lifecycle properties (sync constructor; no disk/log/error/stack-trace exposure; pino redaction + in-process signing; single key-state per instance) with the implementation primitive marked **opaque to consumers**. Plan 10-04 ships a `private keyPair: KeyPair` field; both signing call sites (`fundAccountFromTreasury`, `addRecoveryWallet`) accept the `KeyPair` object directly so the raw private-key string never re-appears on the call stack after constructor materialization.
 
-2. **NEAR nonce-race error text for MPC-06**
+2. **NEAR nonce-race error text for MPC-06** — **RESOLVED**
    - What we know: NEAR RPC returns error objects with `data` and `message` fields on broadcast failure
-   - What's unclear: Exact string that distinguishes nonce collision from other failures without real testnet testing
-   - Recommendation: In the unit test for T11, mock the first broadcast call to fail with `{ error: { data: 'InvalidNonce: ...' } }` then mock view_account to return "exists"; in the testnet integration test, trigger concurrency by calling `Promise.all([createAccount, createAccount])`
+   - What was unclear: Exact string that distinguishes nonce collision from other failures without real testnet testing
+   - **Resolution:** Plan 10-04 ships an `isLikelyNonceRace(error)` regex helper that matches `/InvalidNonce|nonce|stale/i` against the error data/message; on match it re-runs `view_account` once and returns the cached result. T11 unit test mocks first broadcast with `{ error: { data: 'InvalidNonce: ...' } }` then mocks `view_account` to return "exists". Testnet integration test triggers concurrency via `Promise.all([createAccount, createAccount])`.
 
-3. **MPCAccountManagerConfig vs MPCConfig — internal constructor impact**
+3. **MPCAccountManagerConfig vs MPCConfig — internal constructor impact** — **RESOLVED**
    - What we know: The existing `createAnonAuth` calls `createMPCManager(MPCConfig)` with optional `derivationSalt`
-   - What's unclear: Whether to change the class constructor to accept `MPCAccountManagerConfig` (breaking for internal usage) or overload it
-   - Recommendation: Keep `MPCConfig` as the constructor's internal parameter type; `MPCAccountManagerConfig` is a consumer-facing type alias. In index.ts, document that `MPCAccountManagerConfig` satisfies `MPCConfig`. Users can pass either.
+   - What was unclear: Whether to change the class constructor to accept `MPCAccountManagerConfig` (breaking for internal usage) or overload it
+   - **Resolution:** `MPCConfig` remains the constructor's internal parameter type; `MPCAccountManagerConfig` is exported from `src/server/index.ts` as a consumer-facing type alias that **requires** `derivationSalt` (vs `MPCConfig` where it is optional). The two are structurally compatible — any value satisfying `MPCAccountManagerConfig` also satisfies `MPCConfig`. Plan 10-01 exports both types; Plan 10-04 documents the alias relationship in mpc.ts.
 
 ---
 
