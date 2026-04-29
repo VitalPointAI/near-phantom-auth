@@ -40,11 +40,11 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 
 ### Multi-RP_ID Verification (F4)
 
-- [ ] **RPID-01**: `AnonAuthConfig.rp.relatedOrigins?: Array<{ origin: string; rpId: string }>` accepts paired tuples (NOT two parallel arrays). Default: `[]` → behavior identical to v0.6.1 (single rpId).
-- [ ] **RPID-02**: Library validates `relatedOrigins` at `createAnonAuth()` startup: each `origin` must be `https://` (or `http://localhost` for dev), no wildcards, host must be a suffix-domain of the `rpId`. Validation throws with classified message; max 5 entries.
-- [ ] **RPID-03**: `verifyRegistrationResponse` and `verifyAuthenticationResponse` calls in `src/server/passkey.ts` and `src/server/webauthn.ts` pass paired arrays: `expectedOrigin: [primaryOrigin, ...relatedOrigins.map(o => o.origin)]` and `expectedRPID: [primaryRpId, ...relatedOrigins.map(o => o.rpId)]`. The pairing is preserved by index — library docstring asserts this contract.
-- [ ] **RPID-04**: Standalone `verifyRegistration()` and `verifyAuthentication()` types widen `expectedRPID` and `expectedOrigin` to `string | string[]`; `string` form preserved for backwards compatibility.
-- [ ] **RPID-05**: README documents the `/.well-known/webauthn` consumer responsibility (library does NOT auto-host); links to passkeys.dev and the W3C Passkey Endpoints spec; provides a copy-pasteable JSON skeleton.
+- [x] **RPID-01**: `AnonAuthConfig.rp.relatedOrigins?: Array<{ origin: string; rpId: string }>` accepts paired tuples (NOT two parallel arrays). Default: `[]` → behavior identical to v0.6.1 (single rpId).
+- [x] **RPID-02**: Library validates `relatedOrigins` at `createAnonAuth()` startup: each `origin` must be `https://` (or `http://localhost` for dev), no wildcards, host must be a suffix-domain of the `rpId`. Validation throws with classified message; max 5 entries.
+- [x] **RPID-03**: `verifyRegistrationResponse` and `verifyAuthenticationResponse` calls in `src/server/passkey.ts` and `src/server/webauthn.ts` pass paired arrays: `expectedOrigin: [primaryOrigin, ...relatedOrigins.map(o => o.origin)]` and `expectedRPID: [primaryRpId, ...relatedOrigins.map(o => o.rpId)]`. The pairing is preserved by index — library docstring asserts this contract.
+- [x] **RPID-04**: Standalone `verifyRegistration()` and `verifyAuthentication()` types widen `expectedRPID` and `expectedOrigin` to `string | string[]`; `string` form preserved for backwards compatibility.
+- [x] **RPID-05**: README documents the `/.well-known/webauthn` consumer responsibility (library does NOT auto-host); links to passkeys.dev and the W3C Passkey Endpoints spec; provides a copy-pasteable JSON skeleton.
 
 ### Registration Analytics Hook (F5)
 
@@ -129,11 +129,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BACKFILL-02 | Phase 15 | Pending |
 | BACKFILL-03 | Phase 15 | Pending |
 | BACKFILL-04 | Phase 15 | Pending |
-| RPID-01 | Phase 12 | Pending |
-| RPID-02 | Phase 12 | Pending |
-| RPID-03 | Phase 12 | Pending |
-| RPID-04 | Phase 12 | Pending |
-| RPID-05 | Phase 12 | Pending |
+| RPID-01 | Phase 12 | Complete |
+| RPID-02 | Phase 12 | Complete |
+| RPID-03 | Phase 12 | Complete |
+| RPID-04 | Phase 12 | Complete |
+| RPID-05 | Phase 12 | Complete |
 | ANALYTICS-01 | Phase 13 | Pending |
 | ANALYTICS-02 | Phase 13 | Pending |
 | ANALYTICS-03 | Phase 13 | Pending |
