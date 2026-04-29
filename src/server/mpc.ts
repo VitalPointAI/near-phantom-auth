@@ -34,6 +34,26 @@ export interface MPCConfig {
 }
 
 /**
+ * Consumer-facing configuration for standalone MPCAccountManager usage (MPC-07).
+ * derivationSalt is REQUIRED for cross-tenant isolation. Aliased onto MPCConfig
+ * for internal-call backward compatibility.
+ */
+export interface MPCAccountManagerConfig {
+  networkId: 'testnet' | 'mainnet';
+  treasuryAccount: string;
+  treasuryPrivateKey: string;
+  derivationSalt: string;
+  fundingAmount?: string;
+  logger?: Logger;
+}
+
+/**
+ * Consumer-facing return type from createAccount(). Alias of MPCAccount for the
+ * frozen public contract (MPC-01).
+ */
+export type CreateAccountResult = MPCAccount;
+
+/**
  * Get the MPC contract ID for a network
  */
 function getMPCContractId(networkId: 'testnet' | 'mainnet'): string {

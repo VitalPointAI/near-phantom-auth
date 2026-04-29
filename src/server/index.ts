@@ -257,7 +257,8 @@ export type {
 } from '../types/index.js';
 export type { SessionManager, SessionConfig } from './session.js';
 export type { PasskeyManager, PasskeyConfig } from './passkey.js';
-export type { MPCAccountManager, MPCConfig, MPCAccount } from './mpc.js';
+export { MPCAccountManager } from './mpc.js';
+export type { MPCAccountManagerConfig, CreateAccountResult, MPCConfig, MPCAccount } from './mpc.js';
 export type { WalletRecoveryManager } from './recovery/wallet.js';
 export type { IPFSRecoveryManager, IPFSRecoveryConfig } from './recovery/ipfs.js';
 export type { OAuthManager, OAuthProfile, OAuthTokens, OAuthProviderConfig } from './oauth/index.js';
