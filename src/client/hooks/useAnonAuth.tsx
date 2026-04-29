@@ -44,6 +44,12 @@ export interface AnonAuthState {
   error: string | null;
   /** Whether the last registered credential appears cloud-synced (privacy warning) */
   credentialCloudSynced: boolean | null;
+  /** Whether the most recent passkey was backed up (BS bit) — re-read on every login,
+   *  may FLIP 0→1 over the credential's lifetime. null until register() or login() resolves. */
+  passkeyBackedUp: boolean | null;
+  /** Whether the most recent passkey is backup-eligible (BE bit) — set ONCE at registration,
+   *  immutable for the credential's lifetime. null until register() or login() resolves. */
+  passkeyBackupEligible: boolean | null;
   /** Available OAuth providers */
   oauthProviders: Array<{ name: string; authUrl: string }>;
 }
@@ -137,6 +143,8 @@ export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProvider
     error: null,
     credentialCloudSynced: null,
     oauthProviders: [],
+    passkeyBackedUp: null,           // NEW (BACKUP-04)
+    passkeyBackupEligible: null,     // NEW (BACKUP-04)
   });
 
   // Check WebAuthn support on mount
@@ -237,6 +245,8 @@ export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProvider
           nearAccountId: result.nearAccountId,
           authMethod: 'passkey',
           credentialCloudSynced: cloudSynced,
+          passkeyBackedUp: result.passkey?.backedUp ?? null,
+          passkeyBackupEligible: result.passkey?.backupEligible ?? null,
         }));
       } else {
         throw new Error('Registration failed');
@@ -283,6 +293,8 @@ export function AnonAuthProvider({ apiUrl, passkey, children }: AnonAuthProvider
           codename: session.codename || result.codename,
           nearAccountId: session.nearAccountId || null,
           expiresAt: session.expiresAt ? new Date(session.expiresAt) : null,
+          passkeyBackedUp: result.passkey?.backedUp ?? null,
+          passkeyBackupEligible: result.passkey?.backupEligible ?? null,
         }));
       } else {
         throw new Error('Authentication failed');
