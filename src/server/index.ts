@@ -37,6 +37,7 @@ import pino from 'pino';
 import { createPostgresAdapter } from './db/adapters/postgres.js';
 import { createSessionManager, type SessionManager } from './session.js';
 import { createPasskeyManager, type PasskeyManager } from './passkey.js';
+import { validateRelatedOrigins } from './relatedOrigins.js';
 import { createMPCManager, type MPCAccountManager } from './mpc.js';
 import { createWalletRecoveryManager, type WalletRecoveryManager } from './recovery/wallet.js';
 import { createIPFSRecoveryManager, type IPFSRecoveryManager } from './recovery/ipfs.js';
@@ -129,11 +130,21 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     origin: 'http://localhost:3000',
   };
 
+  // Phase 12 RPID-02: throw at startup on misconfiguration (Pitfall 4 — fail fast,
+  // never at request time). Runs AFTER rpConfig resolution so primary rpId/origin
+  // are available for suffix-domain checks. Helper handles undefined/[] (returns []).
+  const validatedRelatedOrigins = validateRelatedOrigins(
+    config.rp?.relatedOrigins,
+    rpConfig.id,
+    rpConfig.origin,
+  );
+
   const passkeyManager = createPasskeyManager(db, {
     rpName: rpConfig.name,
     rpId: rpConfig.id,
     origin: rpConfig.origin,
     logger,
+    relatedOrigins: validatedRelatedOrigins,    // Phase 12 RPID-03 thread-through
   });
 
   // Create MPC manager
