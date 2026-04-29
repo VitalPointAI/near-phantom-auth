@@ -12,7 +12,7 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 **Shipped version: v0.6.1** (2026-04-29) — `@vitalpoint/near-phantom-auth@0.6.1` is live on the npm registry.
 
-**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (defining requirements).
+**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phase 11 complete: backup-eligibility flags + hooks scaffolding shipped).
 
 ## Current Milestone: v0.7.0 Consumer Hooks & Recovery Hardening
 
@@ -169,4 +169,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 — v0.7.0 milestone "Consumer Hooks & Recovery Hardening" started; defining requirements. Last shipped: v0.6.1 (2026-04-29).*
+*Last updated: 2026-04-29 — Phase 11 complete (BACKUP-01..05 + HOOK-01 shipped: `passkey: { backedUp, backupEligible }` on register/login finish responses; standalone `verifyRegistration()` exposes `backupEligible`; React `useAnonAuth` exposes `passkeyBackedUp` / `passkeyBackupEligible`; `AnonAuthHooks` scaffold threaded through both routers with zero call sites). Last shipped: v0.6.1 (2026-04-29). Next: Phase 12 multi-RP_ID verification.*
