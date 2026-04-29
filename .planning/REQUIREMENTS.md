@@ -114,42 +114,52 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BACKUP-01 | TBD | Pending |
-| BACKUP-02 | TBD | Pending |
-| BACKUP-03 | TBD | Pending |
-| BACKUP-04 | TBD | Pending |
-| BACKUP-05 | TBD | Pending |
-| HOOK-01 | TBD | Pending |
-| HOOK-02 | TBD | Pending |
-| HOOK-03 | TBD | Pending |
-| HOOK-04 | TBD | Pending |
-| HOOK-05 | TBD | Pending |
-| HOOK-06 | TBD | Pending |
-| BACKFILL-01 | TBD | Pending |
-| BACKFILL-02 | TBD | Pending |
-| BACKFILL-03 | TBD | Pending |
-| BACKFILL-04 | TBD | Pending |
-| RPID-01 | TBD | Pending |
-| RPID-02 | TBD | Pending |
-| RPID-03 | TBD | Pending |
-| RPID-04 | TBD | Pending |
-| RPID-05 | TBD | Pending |
-| ANALYTICS-01 | TBD | Pending |
-| ANALYTICS-02 | TBD | Pending |
-| ANALYTICS-03 | TBD | Pending |
-| ANALYTICS-04 | TBD | Pending |
-| ANALYTICS-05 | TBD | Pending |
-| ANALYTICS-06 | TBD | Pending |
-| RELEASE-01 | TBD | Pending |
-| RELEASE-02 | TBD | Pending |
-| RELEASE-03 | TBD | Pending |
-| RELEASE-04 | TBD | Pending |
+| BACKUP-01 | Phase 11 | Pending |
+| BACKUP-02 | Phase 11 | Pending |
+| BACKUP-03 | Phase 11 | Pending |
+| BACKUP-04 | Phase 11 | Pending |
+| BACKUP-05 | Phase 11 | Pending |
+| HOOK-01 | Phase 11 | Pending |
+| HOOK-02 | Phase 14 | Pending |
+| HOOK-03 | Phase 14 | Pending |
+| HOOK-04 | Phase 14 | Pending |
+| HOOK-05 | Phase 14 | Pending |
+| HOOK-06 | Phase 14 | Pending |
+| BACKFILL-01 | Phase 15 | Pending |
+| BACKFILL-02 | Phase 15 | Pending |
+| BACKFILL-03 | Phase 15 | Pending |
+| BACKFILL-04 | Phase 15 | Pending |
+| RPID-01 | Phase 12 | Pending |
+| RPID-02 | Phase 12 | Pending |
+| RPID-03 | Phase 12 | Pending |
+| RPID-04 | Phase 12 | Pending |
+| RPID-05 | Phase 12 | Pending |
+| ANALYTICS-01 | Phase 13 | Pending |
+| ANALYTICS-02 | Phase 13 | Pending |
+| ANALYTICS-03 | Phase 13 | Pending |
+| ANALYTICS-04 | Phase 13 | Pending |
+| ANALYTICS-05 | Phase 13 | Pending |
+| ANALYTICS-06 | Phase 13 | Pending |
+| RELEASE-01 | Phase 16 | Pending |
+| RELEASE-02 | Phase 16 | Pending |
+| RELEASE-03 | Phase 16 | Pending |
+| RELEASE-04 | Phase 16 | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total
-- Mapped to phases: 0 (filled by roadmap)
-- Unmapped: 30 ⚠️ (will be 0 after roadmap)
+- Mapped to phases: 30 ✓
+- Unmapped: 0 ✓
+- Double-mapped: 0 ✓
+
+**Phase coverage breakdown:**
+- Phase 11 (Backup-Eligibility + Hooks Scaffolding): 6 reqs (BACKUP-01..05, HOOK-01)
+- Phase 12 (Multi-RP_ID): 5 reqs (RPID-01..05)
+- Phase 13 (Analytics Hook): 6 reqs (ANALYTICS-01..06)
+- Phase 14 (2FA Hook): 5 reqs (HOOK-02..06)
+- Phase 15 (Lazy-Backfill): 4 reqs (BACKFILL-01..04)
+- Phase 16 (Release Prep): 4 reqs (RELEASE-01..04)
+- Total: 30 ✓
 
 ---
 *Requirements defined: 2026-04-29*
-*Last updated: 2026-04-29 — initial v0.7.0 definition; awaiting roadmap mapping.*
+*Last updated: 2026-04-29 — roadmap created; 30 v1 requirements mapped across Phases 11–16; coverage 100%.*

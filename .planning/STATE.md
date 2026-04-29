@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: planning
-last_updated: "2026-04-29T14:17:18.644Z"
+status: roadmap_defined
+last_updated: "2026-04-29T15:00:00.000Z"
 last_activity: 2026-04-29
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,25 +17,25 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-28)
+See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 10 — mpcaccountmanager
+**Current focus:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phases 11–16, planning)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started — Phase 11 (Backup-Eligibility Flags + Hooks Scaffolding) is the first phase to plan
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-29 — Milestone v0.7.0 started
+Status: Roadmap defined; awaiting `/gsd-plan-phase 11`
+Last activity: 2026-04-29 — v0.7.0 roadmap created (30 v1 requirements mapped across 6 phases)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 9 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
 - Average duration: -
-- Total execution time: 0 hours
+- Total execution time: 0 hours (v0.7.0 not started)
 
 **By Phase:**
 
@@ -43,115 +43,67 @@ Last activity: 2026-04-29 — Milestone v0.7.0 started
 |-------|-------|-------|----------|
 | 09 | 3 | - | - |
 | 10 | 6 | - | - |
+| 11 | TBD | - | - |
+| 12 | TBD | - | - |
+| 13 | TBD | - | - |
+| 14 | TBD | - | - |
+| 15 | TBD | - | - |
+| 16 | TBD | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: none yet
-- Trend: -
+- Last 5 plans: Phase 10-01 through 10-06 (v0.6.1 hotfix)
+- Trend: Sequential clean execution after worktree-base-mismatch + sandbox issues recovered in Phase 10
 
 *Updated after each plan completion*
-| Phase 01 P01 | 6 | 2 tasks | 7 files |
-| Phase 01 P02 | 3 | 2 tasks | 3 files |
-| Phase 01 P03 | 4 | 2 tasks | 3 files |
-| Phase 02 P02 | 7 | 2 tasks | 2 files |
-| Phase 03-structured-logging P01 | 6 | 2 tasks | 14 files |
-| Phase 03-structured-logging P02 | 6 | 2 tasks | 11 files |
-| Phase 04-http-defenses P01 | 8 | 2 tasks | 9 files |
-| Phase 04-http-defenses P02 | 5 | 2 tasks | 4 files |
-| Phase 04-http-defenses P03 | 5 | 2 tasks | 4 files |
-| Phase 05-db-integrity-and-functional-stubs P01 | 2 | 2 tasks | 3 files |
-| Phase 05 P02 | 8 | 2 tasks | 1 files |
-| Phase 05-db-integrity-and-functional-stubs P03 | 15 | 2 tasks | 3 files |
-| Phase 06-scalability-tech-debt-and-email P02 | 3 | 2 tasks | 4 files |
-| Phase 06-scalability-tech-debt-and-email P03 | 224 | 2 tasks | 5 files |
-| Phase 06-scalability-tech-debt-and-email P01 | 7 | 2 tasks | 3 files |
-| Phase 06-scalability-tech-debt-and-email P04 | 8 | 2 tasks | 2 files |
-| Phase 07-test-coverage P01 | 4 | 2 tasks | 2 files |
-| Phase 07-test-coverage P02 | 7 | 2 tasks | 1 files |
-| Phase 07-test-coverage P04 | 4 | 2 tasks | 2 files |
-| Phase 08-wire-oauth-callback-db-state P01 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
 
-- [Init]: AWS SES for email delivery (Phase 6)
-- [Init]: Compound codenames ALPHA-BRAVO-42 style (Phase 6)
-- [Init]: Remove SQLite type instead of implementing adapter (Phase 6)
-- [Init]: Skip auto-recovery for OAuth until email works — BUG-05 deferred to Phase 6 behind EMAIL-01
-- [Init]: zod for runtime validation, no `.strict()` on WebAuthn response fields (Phase 2)
-- [Phase 02 P01]: z.object({}).catchall(z.unknown()) replaces z.record(z.unknown()) for clientExtensionResults — Zod 4.3.6 bug: z.record(z.unknown()) throws TypeError when values are nested objects; catchall is semantically equivalent and works correctly
-- [Phase 02 P01]: WebAuthn .passthrough() on both outer credential and inner response sub-object — confirmed correct approach in schemas.ts
-- [Init]: Make new DatabaseAdapter methods optional with internal fallbacks to avoid hard breaking changes (Phase 5)
-- [Phase 01]: it.todo() used for all test stubs — suite runs green with 0 failures, 16 todos, clean scaffolding for Plans 02 and 03
-- [Phase 01]: warnedNoUpdateSessionExpiry is instance-scoped (inside createSessionManager closure), not module-level — prevents test isolation issues and is semantically correct since different manager instances are independent
-- [Phase 01]: Length guard before timingSafeEqual is required — timingSafeEqual throws ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH on mismatched-length buffers, so truncated/extended signatures are rejected by length check before comparison
-- [Phase 01 P03]: Static bs58 import replaces dynamic import; removes bs58.default accessor throughout mpc.ts
-- [Phase 01 P03]: BN-based yoctoNEAR conversion: split decimal string, reconstruct integer, use BN for canonical form — honors locked BN decision while handling bn.js lack of decimal string support
-- [Phase 01 P03]: derivationSalt absent produces identical seed 'implicit-{userId}' as original code for backward compatibility
-- [Phase 02]: Empty-body POST routes use z.object({}) schema — rejects non-object bodies while accepting extra fields
-- [Phase 02]: Auth-before-body ordering preserved in walletVerify, ipfsSetup, oauthLink — session check precedes validateBody call
-- [Phase 03-01]: pino externalized in tsup.config.ts — library consumers provide their own pino instance; not bundled to avoid version conflicts
-- [Phase 03-01]: No-op default is pino({ level: 'silent' }) — consumers who do not pass a logger see zero output, no console pollution
-- [Phase 03-01]: Child loggers with module binding created in each factory — Plan 02 can use log.* directly without any plumbing changes
-- [Phase 03-structured-logging]: fundAccountFromTreasury accepts log Logger parameter — standalone module-level functions needing logging receive logger from caller rather than a silent fallback
-- [Phase 03-structured-logging]: webauthn.ts and wallet.ts use module-level pino silent loggers — standalone exported functions not created via factory use pino({ level: 'silent' }) with no consumer override path
-- [Phase 04-http-defenses]: express-rate-limit, csrf-csrf, cookie-parser externalized in tsup.config.ts — middleware deps consumed by library users
-- [Phase 04-http-defenses]: RateLimitConfig and CsrfConfig defined before implementation — Plans 02 and 03 can implement without any type/setup work
-- [Phase 04-http-defenses]: Test stubs created with it.todo placeholders — suite runs green with 19 todos, clean scaffolding for Plans 02 and 03
-- [Phase 04-http-defenses]: Separate limiter instances per router (router.ts vs oauth/router.ts) — independent per-IP counters; intentional isolation
-- [Phase 04-http-defenses]: getCsrfTokenFromRequest replaces getTokenFromRequest; generateCsrfToken replaces generateToken; getSessionIdentifier uses req.ip (csrf-csrf v4 renamed API)
-- [Phase 04-http-defenses]: skipCsrfProtection regex is ^\/[^/]+\/callback$ — req.path is relative to sub-router mount point
-- [Phase 04-http-defenses]: INFRA-05 guard fires regardless of CSRF setting — consumer may disable CSRF but also forget cookie-parser
-- [Phase 05]: Make new DatabaseAdapter methods optional with ? — no breaking changes for custom adapters that don't implement them
-- [Phase 05]: buildClientAdapter() throws 'Not available in transaction context' for non-transactional methods — prevents silent query-outside-transaction bugs
-- [Phase 05]: actionCreators destructuring for addKey/fullAccessKey — plan showed direct imports that don't exist; fixed to use actionCreators object which is the actual export from @near-js/transactions
-- [Phase 05]: Treasury key cast to ed25519 template literal for KeyPair.fromString — KeyPairString type requires ed25519:X format; signing authority question deferred to testnet validation
-- [Phase 05-db-integrity-and-functional-stubs]: walletVerifyBodySchema and walletFinishBodySchema: signature is a WalletSignature object (signature/publicKey/message), not a plain string — schema was mismatched to the WalletRecoveryManager interface
-- [Phase 05-db-integrity-and-functional-stubs]: DELETE /account: destroySession before deleteUserSessions to invalidate auth cookie immediately; deleteRecoveryData is conditional on adapter support; returns 501 if deleteUser not implemented
-- [Phase 06-02]: isValidCodename NATO pattern uses optional second word segment (?:-[A-Z]+)? — accepts both ALPHA-7 (legacy) and ALPHA-BRAVO-42 (new)
-- [Phase 06-02]: Promise.any() with no AbortController in fetchFromIPFS — consumers needing timeouts use config.customFetch per PERF-02 spec
-- [Phase 06-02]: createTestnetAccount deleted after zero call sites confirmed — testnet helper API was dead code
-- [Phase 06-03]: EmailService is optional — absence means graceful skip with info log (BUG-05 satisfied)
-- [Phase 06-03]: Email failure is isolated from registration — caught separately, logs warn, does not throw
-- [Phase 06-03]: @aws-sdk/client-ses externalized in tsup — library consumers provide their own SES dependency
-- [Phase 06-01]: OAuthStateRecord defined in types/index.ts to avoid circular imports — does not import from oauth/index.ts
-- [Phase 06-01]: stateStore Map kept as fallback for custom adapters without DB state methods — no breaking changes
-- [Phase 06-01]: mapOAuthUserRows() shared helper eliminates duplicated row-to-OAuthUser mapping across three getOAuthUser* methods
-- [Phase 06-04]: createCleanupScheduler is standalone export, not embedded in AnonAuthInstance — composable pattern
-- [Phase 06-04]: handle.unref() called immediately after setInterval — prevents timer from blocking process exit
-- [Phase 06-04]: cleanExpiredChallenges and cleanExpiredOAuthStates optional-chained with ?? 0 — custom adapters without these methods still work
-- [Phase 07-04]: Mock sessionManager.getSession directly to simulate authenticated state — avoids cookie encoding complexity; standard integration test pattern for this codebase
-- [Phase 07-04]: High rate limits (1000 req/window) in integration test createRouter config — prevents limiter interference with test assertions
-- [Phase 07-04]: Re-apply mock return values after vi.clearAllMocks() in beforeEach — clearAllMocks resets implementations, not just call counts
-- [Phase 07-03]: vi.clearAllMocks() in beforeEach + re-apply mocked values ensures passkey test isolation between describe blocks
-- [Phase 07-03]: INFRA-02 transaction rollback test uses separate txAdapter in db.transaction callback mock — correctly isolates inner adapter behavior
-- [Phase 07-03]: addRecoveryWallet tests use nacl.sign.keyPair() real ed25519 treasury key + fetch-level mocking (not manager stub) for STUB-01 coverage
-- [Phase 07-01]: No mocking needed for crypto-based pure functions — Node crypto is deterministic enough for round-trip tests
-- [Phase 07-01]: Statistical uniqueness check: 50 samples expect >=40 unique (collision space is 50k+ for codenames)
-- [Phase 07-02]: session.test.ts adversarial coverage was already complete — tampered, truncated, and extended cookie cases all verified green without modification
-- [Phase 07-02]: Adversarial unrelated-key case tested by: creating valid sig with keypair A, mocking RPC to return UNKNOWN_ACCESS_KEY error, asserting checkWalletAccess returns false
-- [Phase 08-wire-oauth-callback-db-state]: cookieParser mounted unconditionally inside createOAuthRouter — consumers no longer need external mount; INFRA-05 guard retained as defense-in-depth for sub-app isolation edge cases
-- [Phase 08-wire-oauth-callback-db-state]: oauthState.codeVerifier from DB record replaces req.cookies?.oauth_code_verifier in callback — codeVerifier is now sourced from DB-backed state for PKCE token exchange
+**v0.7.0 locked decisions (resolved before requirements drafting, 2026-04-29):**
+
+- [v0.7.0]: F3 lazy-backfill ownership = **pass-through hook** (NOT library-managed schema). Library invokes consumer's hook on `/login/finish`; consumer owns the schema and DB transaction. **No library schema migration in this milestone.**
+- [v0.7.0]: F2 2FA hook timing = **inline, blocks session creation**. Hook fires after passkey verify + DB persist + MPC funding, BEFORE `sessionManager.createSession`. Hook throw → DB rollback (existing transaction wrapper).
+- [v0.7.0]: F2 OAuth integration = **hook fires for OAuth too**. Renamed from `afterPasskeyVerify` to `hooks.afterAuthSuccess`. Fires on `/register/finish`, `/login/finish`, AND OAuth `/callback` success.
+- [v0.7.0]: F5 sync mode = **`awaitAnalytics: boolean`** opt-in flag at top level of `AnonAuthConfig`. Default `false` (fire-and-forget).
+- [v0.7.0]: Anonymity invariant non-negotiable; `MPCAccountManager` FROZEN; no new dependencies.
+- [v0.7.0]: Phase 13 (Analytics) promoted earlier than Architecture researcher's suggested order — R2 type-level PII whitelist is highest-priority defense; landing it before F2/F3 means subsequent features are tested against it from day one.
+- [v0.7.0]: R3 origin-spoofing defense (paired-tuple `relatedOrigins: Array<{ origin, rpId }>` type + startup validation) is load-bearing for Phase 12.
+- [v0.7.0]: BACKFILL-03 contract: backfill failure must NEVER block login — hook errors caught, WARN-logged, response continues with `backfill: { backfilled: false, reason: 'skipped' }`.
+
+**Recent v0.6.1 decisions affecting current work (carried forward):**
+
+- [Phase 10]: `MPCAccountManager` contract is FROZEN by consumer pin — no field/method/return-shape renames in v0.7.0
+- [Phase 10]: `derivationSalt` REQUIRED at the type level via tsc-fail fixture pattern (mirrored in ANALYTICS-03)
+- [Init]: Make new DatabaseAdapter methods optional with internal fallbacks to avoid hard breaking changes (Phase 5) — but pass-through F3 framing means NO new adapter methods in v0.7.0
+- [Init]: zod for runtime validation (Phase 2)
+- [Init]: pino externalized in tsup.config.ts (Phase 3-01) — consumers provide their own pino instance
 
 ### Roadmap Evolution
 
-- Phase 9 added: WebAuthn PRF extension support for DEK sealing key derivation (sealingKeyHex wire format, prfSalt/requirePrf options, v0.6.0 feature-add)
-- Phase 10 added: MPCAccountManager hotfix (v0.6.1 milestone; additive only; contract FROZEN by consumer pin; 12 MPC-* requirements mapped)
+- v0.5.x → v0.6.0: Phase 9 added (WebAuthn PRF extension)
+- v0.6.0 → v0.6.1: Phase 10 added (MPCAccountManager hotfix; contract FROZEN)
+- v0.6.1 → v0.7.0: Phases 11–16 added (Consumer Hooks & Recovery Hardening; 30 v1 requirements; additive minor bump):
+  - Phase 11: Backup-Eligibility Flags + Hooks Scaffolding (BACKUP-01..05, HOOK-01)
+  - Phase 12: Multi-RP_ID Verification (RPID-01..05)
+  - Phase 13: Registration Analytics Hook (ANALYTICS-01..06) — promoted earlier for R2 PII defense
+  - Phase 14: Second-Factor Enrolment Hook (HOOK-02..06)
+  - Phase 15: Lazy-Backfill Hook (BACKFILL-01..04)
+  - Phase 16: Release Prep (RELEASE-01..04)
 
 ### Pending Todos
 
-None yet.
+None yet — Phase 11 planning is the next step.
 
 ## Deferred Items
 
 Items acknowledged and deferred at v0.6.1 milestone close on 2026-04-29.
 Carried over from v0.6.0 (which was never formally closed via /gsd-complete-milestone).
 These require physical devices for cross-browser PRF testing and are orthogonal
-to the v0.6.1 MPCAccountManager hotfix.
+to v0.7.0 Consumer Hooks scope.
 
 | Category | Phase | Item | Status | Open scenarios | Reason deferred |
 |----------|-------|------|--------|----------------|-----------------|
@@ -162,12 +114,26 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ### Blockers/Concerns
 
-- **Phase 5 (MPC signing):** Real borsh AddKey transaction serialization must be validated against NEAR testnet before Phase 5 ships. Capture a real AddKey transaction as a fixture.
-- **Phase 5 (DB interface):** Decide before Phase 5 whether `DatabaseAdapter.transaction()` being optional (no-op fallback) is acceptable, or whether absent transaction support should be a hard runtime error.
-- **Phase 6 (zod version):** RESOLVED — Zod 4.3.6 installed and confirmed stable latest as of 2026-03-14.
+**v0.7.0 cross-cutting risks (from research synthesis):**
+
+- **R1 (Phase 15):** Lazy backfill mid-write partial state. Mitigated by pass-through framing (consumer owns the transaction). Library contract: backfill failure NEVER blocks login (BACKFILL-03).
+- **R2 (Phase 13):** Analytics PII leak via event SHAPE. Defended at type level with `__tsc_fail/analytics-pii-leak.test.ts` fixture (mirroring v0.6.1 MPC-07). Runtime whitelist as defense-in-depth.
+- **R3 (Phase 12):** Multi-RP_ID origin spoofing via mis-paired arrays. Defended by `relatedOrigins: Array<{ origin: string; rpId: string }>` paired-tuple config + startup validation (https only, no wildcards, host suffix-domain of rpId, max 5 entries).
+
+**Phases likely needing `/gsd-research-phase` during planning:**
+
+- **Phase 15 (F3 Lazy-backfill):** IPFS dual-recovery semantics; concurrent-write defense even under pass-through framing; consumer-side schema contract examples for the README.
+- **Phase 14 (F2 2FA hook):** MPC-funded-but-rolled-back trade-off articulation; OAuth router instrumentation pattern; hook ctx shape for the 3 instrumentation sites.
+
+**Phases with well-documented patterns (likely skip research):**
+
+- Phase 11 — pure plumbing of already-extracted values; tsc-fail fixture pattern proven in v0.6.1.
+- Phase 12 — `@simplewebauthn/server@^13.2.3` already supports array form; paired-tuple is the only design decision.
+- Phase 13 — pattern established (Better Auth, Authsignal); type-level whitelist follows v0.6.1 MPC-07 tsc-fail pattern.
+- Phase 16 — standard close-out, done 3x before (v0.5.x informally, v0.6.0, v0.6.1).
 
 ## Session Continuity
 
-Last session: 2026-03-15T00:00:32.172Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: None
+Last session: 2026-04-29T15:00:00.000Z
+Stopped at: ROADMAP.md created; 30 v1 requirements mapped to Phases 11–16; STATE.md updated; REQUIREMENTS.md traceability filled.
+Resume file: None — next step is `/gsd-plan-phase 11`
