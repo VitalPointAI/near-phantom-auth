@@ -189,6 +189,11 @@ async function createPasskey(options, prfOptions) {
   const transports = response.getTransports?.();
   const ext = credential.getClientExtensionResults();
   const prfResult = ext.prf?.results?.first;
+  if (prfResult && prfResult.byteLength !== 32) {
+    throw new Error(
+      `PRF_UNEXPECTED_LENGTH: expected 32 bytes, got ${prfResult.byteLength}`
+    );
+  }
   const sealingKeyHex = prfResult ? arrayBufferToHex(prfResult) : void 0;
   return {
     id: credential.id,
@@ -247,6 +252,11 @@ async function authenticateWithPasskey(options, prfOptions) {
   const response = credential.response;
   const ext = credential.getClientExtensionResults();
   const prfResult = ext.prf?.results?.first;
+  if (prfResult && prfResult.byteLength !== 32) {
+    throw new Error(
+      `PRF_UNEXPECTED_LENGTH: expected 32 bytes, got ${prfResult.byteLength}`
+    );
+  }
   const sealingKeyHex = prfResult ? arrayBufferToHex(prfResult) : void 0;
   return {
     id: credential.id,

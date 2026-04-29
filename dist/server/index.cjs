@@ -4,10 +4,10 @@ var pino3 = require('pino');
 var crypto$1 = require('crypto');
 var server = require('@simplewebauthn/server');
 var bs582 = require('bs58');
-var BN = require('bn.js');
 var transactions = require('@near-js/transactions');
 var signers = require('@near-js/signers');
 var crypto$2 = require('@near-js/crypto');
+var utils = require('@near-js/utils');
 var nacl = require('tweetnacl');
 var util = require('util');
 var clientSes = require('@aws-sdk/client-ses');
@@ -21,7 +21,6 @@ function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
 var pino3__default = /*#__PURE__*/_interopDefault(pino3);
 var bs582__default = /*#__PURE__*/_interopDefault(bs582);
-var BN__default = /*#__PURE__*/_interopDefault(BN);
 var nacl__default = /*#__PURE__*/_interopDefault(nacl);
 var cookieParser__default = /*#__PURE__*/_interopDefault(cookieParser);
 
@@ -1065,28 +1064,25 @@ function verifyWalletSignature(signature, expectedMessage) {
   }
 }
 async function checkWalletAccess(nearAccountId, walletPublicKey, networkId) {
-  try {
-    const rpcUrl = networkId === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org";
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "check-access-key",
-        method: "query",
-        params: {
-          request_type: "view_access_key",
-          finality: "final",
-          account_id: nearAccountId,
-          public_key: walletPublicKey
-        }
-      })
-    });
-    const result = await response.json();
-    return !result.error;
-  } catch {
-    return false;
-  }
+  const rpcUrl = networkId === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org";
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "check-access-key",
+      method: "query",
+      params: {
+        request_type: "view_access_key",
+        finality: "final",
+        account_id: nearAccountId,
+        public_key: walletPublicKey
+      }
+    })
+  });
+  const result = await response.json();
+  if (result.error || !result.result) return false;
+  return result.result.permission === "FullAccess";
 }
 function createWalletRecoveryManager(config) {
   (config.logger ?? pino3__default.default({ level: "silent" })).child({ module: "wallet-recovery" });
@@ -1160,22 +1156,11 @@ async function accountExists(accountId, networkId) {
     return false;
   }
 }
-function generateAccountName(userId, prefix) {
-  const hash = crypto$1.createHash("sha256").update(userId).digest("hex");
-  const shortHash = hash.substring(0, 12);
-  return `${prefix}-${shortHash}`;
-}
-async function fundAccountFromTreasury(accountId, treasuryAccount, treasuryPrivateKey, amountNear, networkId, log2) {
+async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amountNear, networkId, log2) {
   const nacl2 = await import('tweetnacl');
   try {
     const rpcUrl = getRPCUrl(networkId);
-    const keyString = treasuryPrivateKey.replace("ed25519:", "");
-    let secretKey;
-    try {
-      secretKey = bs582__default.default.decode(keyString);
-    } catch {
-      secretKey = Buffer.from(keyString, "base64");
-    }
+    const secretKey = bs582__default.default.decode(keyPair.toString().replace("ed25519:", ""));
     const publicKey = secretKey.length === 64 ? secretKey.slice(32) : nacl2.default.sign.keyPair.fromSeed(secretKey.slice(0, 32)).publicKey;
     const publicKeyB58 = bs582__default.default.encode(Buffer.from(publicKey));
     const fullPublicKey = `ed25519:${publicKeyB58}`;
@@ -1205,10 +1190,9 @@ async function fundAccountFromTreasury(accountId, treasuryAccount, treasuryPriva
     }
     const nonce = accessKeyResult.result.nonce + 1;
     const blockHash = accessKeyResult.result.block_hash;
-    const [whole, fraction = ""] = amountNear.split(".");
-    const paddedFraction = fraction.padEnd(24, "0").slice(0, 24);
-    const yoctoStr = (whole + paddedFraction).replace(/^0+/, "") || "0";
-    const amountYocto = BigInt(new BN__default.default(yoctoStr).toString());
+    const yoctoStr = utils.parseNearAmount(amountNear);
+    if (!yoctoStr) throw new Error(`Invalid NEAR amount: ${amountNear}`);
+    const amountYocto = BigInt(yoctoStr);
     const transaction = buildTransferTransaction(
       treasuryAccount,
       publicKey,
@@ -1302,13 +1286,23 @@ function concatArrays(arrays) {
   }
   return result;
 }
+function isLikelyNonceRace(error) {
+  return !!error && /InvalidNonce|nonce|TxAlreadyProcessed/i.test(error);
+}
+function isRpcUnreachable(error) {
+  return /unreachable|ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(error);
+}
+function isTreasuryUnderfunded(error) {
+  return /not have enough funds|insufficient|LackBalanceForState/i.test(error);
+}
 var warnedNoDerivationSalt = false;
 var MPCAccountManager = class {
   networkId;
   mpcContractId;
   accountPrefix;
   treasuryAccount;
-  treasuryPrivateKey;
+  keyPair;
+  // MPC-09: KeyPair object replaces raw private key string
   fundingAmount;
   derivationSalt;
   log;
@@ -1317,34 +1311,97 @@ var MPCAccountManager = class {
     this.mpcContractId = getMPCContractId(config.networkId);
     this.accountPrefix = config.accountPrefix || "anon";
     this.treasuryAccount = config.treasuryAccount;
-    this.treasuryPrivateKey = config.treasuryPrivateKey;
+    if (config.treasuryPrivateKey) {
+      this.keyPair = crypto$2.KeyPair.fromString(config.treasuryPrivateKey);
+    }
     this.fundingAmount = config.fundingAmount || "0.01";
     this.derivationSalt = config.derivationSalt;
-    this.log = (config.logger ?? pino3__default.default({ level: "silent" })).child({ module: "mpc" });
+    this.log = (config.logger ?? pino3__default.default({
+      level: "silent",
+      redact: {
+        paths: [
+          "config.treasuryPrivateKey",
+          "*.treasuryPrivateKey",
+          "treasuryPrivateKey"
+        ],
+        censor: "[Redacted]"
+      }
+    })).child({ module: "mpc" });
   }
   /**
-   * Create a new NEAR account for an anonymous user
+   * Create a NEAR account for an anonymous user.
+   *
+   * Pure function of (treasuryAccount, userId, derivationSalt) — same args
+   * always produce the same nearAccountId/derivationPath/mpcPublicKey (MPC-02).
+   *
+   * Idempotent: a second call against an already-provisioned account
+   * short-circuits via view_account, issuing zero additional transfers (MPC-03).
+   *
+   * Concurrent-safe: nonce-race losers retry view_account once and return
+   * success when the winner has already provisioned the account (MPC-06).
+   *
+   * Error paths throw with cause (MPC-10):
+   *   - 'RPC unreachable' when fetch() itself throws (treasury-funded path only)
+   *   - 'Treasury underfunded' when broadcast_tx_commit error indicates insufficient balance
+   *   - 'Transfer failed' for other broadcast failures
+   *
+   * Backward-compat: when no treasury is configured, returns { onChain: false }
+   * without throwing — used by createAnonAuth's dormant-account flow.
    */
   async createAccount(userId) {
-    const accountName = generateAccountName(userId, this.accountPrefix);
-    const suffix = this.networkId === "mainnet" ? ".near" : ".testnet";
-    const nearAccountId = `${accountName}${suffix}`;
+    if (!this.derivationSalt && !warnedNoDerivationSalt) {
+      this.log.warn("No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.");
+      warnedNoDerivationSalt = true;
+    }
+    const seedInput = this.derivationSalt ? `implicit-${this.derivationSalt}-${userId}` : `implicit-${userId}`;
+    const seed = crypto$1.createHash("sha256").update(seedInput).digest();
+    const publicKeyBytes = derivePublicKey(seed);
+    const implicitAccountId = publicKeyBytes.toString("hex");
+    const publicKey = `ed25519:${bs582__default.default.encode(publicKeyBytes)}`;
     const derivationPath = `near-anon-auth,${userId}`;
-    this.log.info({ nearAccountId, network: this.networkId }, "Creating NEAR account");
-    try {
-      if (!this.derivationSalt && !warnedNoDerivationSalt) {
-        this.log.warn("No derivationSalt configured -- account IDs are predictable from user IDs. Set derivationSalt for production use.");
-        warnedNoDerivationSalt = true;
-      }
-      const seedInput = this.derivationSalt ? `implicit-${this.derivationSalt}-${userId}` : `implicit-${userId}`;
-      const seed = crypto$1.createHash("sha256").update(seedInput).digest();
-      const publicKeyBytes = derivePublicKey(seed);
-      const implicitAccountId = publicKeyBytes.toString("hex");
-      const publicKey = `ed25519:${bs582__default.default.encode(publicKeyBytes)}`;
-      this.log.info({ accountId: implicitAccountId, network: this.networkId }, "Created implicit account");
-      const alreadyExists = await accountExists(implicitAccountId, this.networkId);
-      if (alreadyExists) {
-        this.log.info({ accountId: implicitAccountId }, "Implicit account already funded");
+    this.log.info({ accountId: implicitAccountId, network: this.networkId }, "Creating NEAR account");
+    const alreadyExists = await accountExists(implicitAccountId, this.networkId);
+    if (alreadyExists) {
+      this.log.info({ accountId: implicitAccountId }, "Implicit account already on-chain, short-circuiting");
+      return {
+        nearAccountId: implicitAccountId,
+        derivationPath,
+        mpcPublicKey: publicKey,
+        onChain: true
+      };
+    }
+    if (!this.treasuryAccount || !this.keyPair) {
+      this.log.warn("No treasury configured, account will be dormant until funded");
+      return {
+        nearAccountId: implicitAccountId,
+        derivationPath,
+        mpcPublicKey: publicKey,
+        onChain: false
+      };
+    }
+    this.log.info({ accountId: implicitAccountId }, "Funding implicit account from treasury");
+    const fundResult = await fundAccountFromTreasury(
+      implicitAccountId,
+      this.treasuryAccount,
+      this.keyPair,
+      // MPC-09: pass KeyPair object directly; raw key string never re-appears on call stack
+      this.fundingAmount,
+      this.networkId,
+      this.log
+    );
+    if (fundResult.success) {
+      this.log.info({ txHash: fundResult.txHash }, "Account funded");
+      return {
+        nearAccountId: implicitAccountId,
+        derivationPath,
+        mpcPublicKey: publicKey,
+        onChain: true
+      };
+    }
+    if (isLikelyNonceRace(fundResult.error)) {
+      const existsNow = await accountExists(implicitAccountId, this.networkId);
+      if (existsNow) {
+        this.log.info({ accountId: implicitAccountId }, "Concurrent provisioning detected; account now exists");
         return {
           nearAccountId: implicitAccountId,
           derivationPath,
@@ -1352,41 +1409,15 @@ var MPCAccountManager = class {
           onChain: true
         };
       }
-      let onChain = false;
-      if (this.treasuryAccount && this.treasuryPrivateKey) {
-        this.log.info({ accountId: implicitAccountId }, "Funding implicit account from treasury");
-        const fundResult = await fundAccountFromTreasury(
-          implicitAccountId,
-          this.treasuryAccount,
-          this.treasuryPrivateKey,
-          this.fundingAmount,
-          this.networkId,
-          this.log
-        );
-        if (fundResult.success) {
-          this.log.info({ txHash: fundResult.txHash }, "Account funded");
-          onChain = true;
-        } else {
-          this.log.warn({ err: new Error(fundResult.error) }, "Funding failed, account will be dormant");
-        }
-      } else {
-        this.log.warn("No treasury configured, account will be dormant until funded");
-      }
-      return {
-        nearAccountId: implicitAccountId,
-        derivationPath,
-        mpcPublicKey: publicKey,
-        onChain
-      };
-    } catch (error) {
-      this.log.error({ err: error }, "Mainnet implicit account creation failed");
-      return {
-        nearAccountId,
-        derivationPath,
-        mpcPublicKey: "creation-failed",
-        onChain: false
-      };
     }
+    const errorText = fundResult.error || "Unknown funding failure";
+    if (isRpcUnreachable(errorText)) {
+      throw new Error("RPC unreachable", { cause: new Error(errorText) });
+    }
+    if (isTreasuryUnderfunded(errorText)) {
+      throw new Error("Treasury underfunded", { cause: new Error(errorText) });
+    }
+    throw new Error("Transfer failed", { cause: new Error(errorText) });
   }
   /**
    * Add a recovery wallet as an access key to the MPC account
@@ -1399,14 +1430,13 @@ var MPCAccountManager = class {
    */
   async addRecoveryWallet(nearAccountId, recoveryWalletPublicKey) {
     this.log.info({ nearAccountId }, "Adding recovery wallet via AddKey transaction");
-    if (!this.treasuryPrivateKey) {
+    if (!this.keyPair) {
       this.log.error("No treasury private key configured \u2014 cannot sign AddKey transaction");
       return { success: false };
     }
     try {
       const rpcUrl = getRPCUrl(this.networkId);
-      const keyPair = crypto$2.KeyPair.fromString(this.treasuryPrivateKey);
-      const signer = new signers.KeyPairSigner(keyPair);
+      const signer = new signers.KeyPairSigner(this.keyPair);
       const signerPublicKey = await signer.getPublicKey();
       const signerPublicKeyStr = signerPublicKey.toString();
       const accessKeyResponse = await fetch(rpcUrl, {
@@ -1478,21 +1508,18 @@ var MPCAccountManager = class {
     }
   }
   /**
-   * Verify that a wallet has recovery access to an account by checking the
-   * specific recovery wallet public key via view_access_key RPC.
+   * Verify that a wallet has FullAccess to an account (MPC-05).
    *
-   * Returns false when account has keys but none match the recovery wallet key.
+   * Returns true ONLY for FullAccess access keys (FunctionCall keys → false).
+   * Returns false (does not throw) when the account is missing/deleted (MPC-04).
+   * Throws when fetch() itself throws (RPC unreachable — MPC-10) so the
+   * consumer route can return 500.
    *
-   * @param nearAccountId - The user's NEAR implicit account ID
+   * @param nearAccountId - The user's NEAR implicit account ID (64-char hex)
    * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
    */
   async verifyRecoveryWallet(nearAccountId, recoveryWalletPublicKey) {
-    try {
-      return await checkWalletAccess(nearAccountId, recoveryWalletPublicKey, this.networkId);
-    } catch {
-      this.log.error({ nearAccountId }, "Recovery wallet verification failed");
-      return false;
-    }
+    return await checkWalletAccess(nearAccountId, recoveryWalletPublicKey, this.networkId);
   }
   /**
    * Get MPC contract ID
@@ -2028,6 +2055,11 @@ var registerFinishBodySchema = zod.z.object({
   challengeId: zod.z.string().min(1),
   tempUserId: zod.z.string().min(1),
   codename: zod.z.string().min(1),
+  // WR-02: sealingKeyHex is validated here (64-char lowercase hex, 32-byte PRF
+  // output) but NOT consumed by any route handler in this library. It is
+  // accepted so downstream consumers (e.g., a DEK auth-service) can forward
+  // it as-is. Treat as key material: do NOT log the validated body as a whole;
+  // extract fields individually if logging is required.
   sealingKeyHex: zod.z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: zod.z.object({
     id: zod.z.string().min(1),
@@ -2050,6 +2082,11 @@ var loginStartBodySchema = zod.z.object({
 });
 var loginFinishBodySchema = zod.z.object({
   challengeId: zod.z.string().min(1),
+  // WR-02: sealingKeyHex is validated here (64-char lowercase hex, 32-byte PRF
+  // output) but NOT consumed by any route handler in this library. It is
+  // accepted so downstream consumers (e.g., a DEK auth-service) can forward
+  // it as-is. Treat as key material: do NOT log the validated body as a whole;
+  // extract fields individually if logging is required.
   sealingKeyHex: zod.z.string().regex(/^[0-9a-f]{64}$/).optional(),
   response: zod.z.object({
     id: zod.z.string().min(1),
@@ -3264,6 +3301,7 @@ function createAnonAuth(config) {
   };
 }
 
+exports.MPCAccountManager = MPCAccountManager;
 exports.POSTGRES_SCHEMA = POSTGRES_SCHEMA;
 exports.base64urlToUint8Array = base64urlToUint8Array;
 exports.createAnonAuth = createAnonAuth;

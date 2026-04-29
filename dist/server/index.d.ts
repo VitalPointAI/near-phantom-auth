@@ -1,6 +1,6 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as RateLimitConfig, C as CsrfConfig, i as AnonAuthConfig } from '../index-DOCiBiZ2.js';
-export { j as AnonUser, k as OAuthProvider, l as OAuthUser, U as User, m as UserType } from '../index-DOCiBiZ2.js';
+import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as RateLimitConfig, C as CsrfConfig, i as AnonAuthConfig } from '../index-DExFbKyH.js';
+export { j as AnonUser, k as OAuthProvider, l as OAuthUser, U as User, m as UserType } from '../index-DExFbKyH.js';
 import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.js';
 
@@ -109,6 +109,24 @@ interface MPCConfig {
     logger?: Logger;
 }
 /**
+ * Consumer-facing configuration for standalone MPCAccountManager usage (MPC-07).
+ * derivationSalt is REQUIRED for cross-tenant isolation. Aliased onto MPCConfig
+ * for internal-call backward compatibility.
+ */
+interface MPCAccountManagerConfig {
+    networkId: 'testnet' | 'mainnet';
+    treasuryAccount: string;
+    treasuryPrivateKey: string;
+    derivationSalt: string;
+    fundingAmount?: string;
+    logger?: Logger;
+}
+/**
+ * Consumer-facing return type from createAccount(). Alias of MPCAccount for the
+ * frozen public contract (MPC-01).
+ */
+type CreateAccountResult = MPCAccount;
+/**
  * MPC Account Manager
  */
 declare class MPCAccountManager {
@@ -116,13 +134,30 @@ declare class MPCAccountManager {
     private mpcContractId;
     private accountPrefix;
     private treasuryAccount?;
-    private treasuryPrivateKey?;
+    private keyPair?;
     private fundingAmount;
     private derivationSalt?;
     private log;
     constructor(config: MPCConfig);
     /**
-     * Create a new NEAR account for an anonymous user
+     * Create a NEAR account for an anonymous user.
+     *
+     * Pure function of (treasuryAccount, userId, derivationSalt) — same args
+     * always produce the same nearAccountId/derivationPath/mpcPublicKey (MPC-02).
+     *
+     * Idempotent: a second call against an already-provisioned account
+     * short-circuits via view_account, issuing zero additional transfers (MPC-03).
+     *
+     * Concurrent-safe: nonce-race losers retry view_account once and return
+     * success when the winner has already provisioned the account (MPC-06).
+     *
+     * Error paths throw with cause (MPC-10):
+     *   - 'RPC unreachable' when fetch() itself throws (treasury-funded path only)
+     *   - 'Treasury underfunded' when broadcast_tx_commit error indicates insufficient balance
+     *   - 'Transfer failed' for other broadcast failures
+     *
+     * Backward-compat: when no treasury is configured, returns { onChain: false }
+     * without throwing — used by createAnonAuth's dormant-account flow.
      */
     createAccount(userId: string): Promise<MPCAccount>;
     /**
@@ -139,12 +174,14 @@ declare class MPCAccountManager {
         txHash?: string;
     }>;
     /**
-     * Verify that a wallet has recovery access to an account by checking the
-     * specific recovery wallet public key via view_access_key RPC.
+     * Verify that a wallet has FullAccess to an account (MPC-05).
      *
-     * Returns false when account has keys but none match the recovery wallet key.
+     * Returns true ONLY for FullAccess access keys (FunctionCall keys → false).
+     * Returns false (does not throw) when the account is missing/deleted (MPC-04).
+     * Throws when fetch() itself throws (RPC unreachable — MPC-10) so the
+     * consumer route can return 500.
      *
-     * @param nearAccountId - The user's NEAR implicit account ID
+     * @param nearAccountId - The user's NEAR implicit account ID (64-char hex)
      * @param recoveryWalletPublicKey - The recovery wallet's public key in ed25519:BASE58 format
      */
     verifyRecoveryWallet(nearAccountId: string, recoveryWalletPublicKey: string): Promise<boolean>;
@@ -479,4 +516,4 @@ interface AnonAuthInstance {
  */
 declare function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance;
 
-export { AnonAuthConfig, type AnonAuthInstance, type CleanupScheduler, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };
+export { AnonAuthConfig, type AnonAuthInstance, type CleanupScheduler, type CreateAccountResult, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCAccountManagerConfig, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };

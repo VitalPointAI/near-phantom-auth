@@ -1,23 +1,38 @@
 # near-phantom-auth
 
-Anonymous passkey authentication with NEAR MPC accounts and decentralized recovery.
+**Drop-in anonymous authentication for any web app — passkeys + NEAR MPC accounts + decentralized recovery, with no email, no phone, and no PII.**
 
 > **Privacy-first**: No email, no phone, no PII. Just biometrics and blockchain.
 
-## Features
+## Why use this?
 
-- **Passkey Authentication**: Face ID, Touch ID, Windows Hello - no passwords
-- **NEAR MPC Accounts**: User-owned accounts via Chain Signatures (8-node threshold MPC)
-- **Anonymous Identity**: Compound codenames (ALPHA-BRAVO-42, SWIFT-FALCON-73) - we never know who you are
-- **OAuth Authentication**: Google, GitHub, and X/Twitter sign-in (separate identity track)
+Most "anonymous" auth solutions still ask for an email or phone number for recovery. This package treats anonymity as a hard constraint and ships everything you need to honor it:
+
+- **Truly anonymous sign-up** — users register with a passkey (Face ID, Touch ID, Windows Hello). No email, no phone, no real name. Identity is a randomly-generated codename (`ALPHA-BRAVO-42`) the server cannot link to a person.
+- **Per-user NEAR account out of the box** — every passkey user gets a deterministic 64-char hex implicit account on NEAR (`testnet` or `mainnet`). Optionally auto-funded from your treasury so it is on-chain immediately. The account is the user's, not yours.
+- **Account recovery without identity** — two recovery paths, both anonymity-preserving:
+  - **Wallet recovery** — link a NEAR wallet on-chain via a `FullAccess` key. We never see the wallet; the link lives only on the blockchain.
+  - **Password + IPFS recovery** — your password encrypts a recovery blob (AES-256-GCM); we pin the ciphertext to IPFS via Pinata/Web3.Storage/Infura. Lose your device, recover with `password + CID`.
+- **OAuth track for users who want it** — Google / GitHub / X-Twitter sign-in is available as a fully separate identity stream that does NOT cross-contaminate the anonymous track. OAuth users live in a different table with a different type.
+- **Standalone MPC account helper** (v0.6.1+) — if you only need NEAR account provisioning (not the full passkey/recovery stack), import `MPCAccountManager` directly and skip everything else.
+- **End-to-end encryption ready** — the WebAuthn PRF extension (v0.6.0+) returns a stable 32-byte sealing key per credential, derived inside the authenticator's secure enclave. Hand it to any DEK provisioner downstream.
+- **Production-hardened** — Zod input validation on every endpoint, tiered rate limiting, opt-in CSRF, `HttpOnly` cookies, structured logging with treasury-key redaction, and a 280+ test suite.
+
+## Feature reference
+
+- **Passkey Authentication**: Face ID, Touch ID, Windows Hello, hardware keys — no passwords
+- **NEAR MPC Accounts**: User-owned accounts via Chain Signatures (8-node threshold MPC) on testnet or mainnet
+- **Standalone `MPCAccountManager`** (v0.6.1+): Provision and recover NEAR accounts without the full auth stack — see [MPCAccountManager (v0.6.1+)](#mpcaccountmanager-v061) below
+- **Anonymous Identity**: Compound codenames (ALPHA-BRAVO-42, SWIFT-FALCON-73) — we never know who you are
+- **OAuth Authentication**: Google, GitHub, and X/Twitter sign-in (separate identity track that never touches the anonymous user table)
 - **Decentralized Recovery**:
-  - Link a NEAR wallet (on-chain access key, not stored in our DB)
+  - Link a NEAR wallet (on-chain `FullAccess` access key, not stored in our DB)
   - Password + IPFS backup (encrypted, you hold the keys)
 - **HttpOnly Sessions**: XSS-proof cookie-based sessions
-- **Input Validation**: Zod schemas on all 18 endpoints - malformed requests rejected before reaching handlers
+- **Input Validation**: Zod schemas on all 18 endpoints — malformed requests rejected before reaching handlers
 - **Rate Limiting**: Tiered per-endpoint limits (auth: 20/15min, recovery: 5/hr)
 - **CSRF Protection**: Opt-in Double Submit Cookie with automatic OAuth callback exemption
-- **Structured Logging**: Injectable pino logger with sensitive field redaction; silent by default
+- **Structured Logging**: Injectable pino logger with sensitive field redaction (treasury private key, etc.); silent by default
 - **Automatic Cleanup**: Scheduler removes expired sessions, challenges, and OAuth states
 - **PRF-Derived Sealing Key** (v0.6.0+): WebAuthn PRF extension produces a stable per-credential 32-byte sealing key for end-to-end encryption — opt-in via `passkey.prfSalt`/`requirePrf`, graceful degradation on Firefox/older authenticators
 
@@ -271,6 +286,99 @@ async function login() {
 - Encrypted blob stored on IPFS via concurrent multi-gateway pinning
 - User saves: password + IPFS CID
 - Recovery: Provide password + CID -> Decrypt -> Create new passkey
+
+## MPCAccountManager (v0.6.1+)
+
+Standalone helper for provisioning NEAR implicit accounts and verifying recovery wallets. Exported from `@vitalpoint/near-phantom-auth/server` as a runtime value. Use this directly when you only need the account-provisioning pipeline — not the full passkey + session + recovery stack — for example when integrating with an existing auth service via a sidecar.
+
+### When to use it
+
+| Use case | Use this | Use full `createAnonAuth` |
+|----------|----------|---------------------------|
+| Building a complete anonymous auth flow (passkey + sessions + recovery) | — | yes |
+| Provisioning NEAR accounts for users authenticated by another system | yes | — |
+| Server-to-server account creation triggered by a webhook | yes | — |
+| Verifying that a wallet has `FullAccess` on a user's NEAR account | yes | yes (via `auth.mpc.verifyRecoveryWallet`) |
+| Idempotent retry of provisioning from a queue worker | yes | — |
+
+### Quick start
+
+```typescript
+import {
+  MPCAccountManager,
+  type MPCAccountManagerConfig,
+  type CreateAccountResult,
+} from '@vitalpoint/near-phantom-auth/server';
+
+const manager = new MPCAccountManager({
+  networkId: 'testnet',                                    // or 'mainnet'
+  treasuryAccount: process.env.NEAR_TREASURY_ACCOUNT!,
+  treasuryPrivateKey: process.env.NEAR_TREASURY_KEY!,
+  derivationSalt: process.env.NEAR_DERIVATION_SALT!,        // REQUIRED — see Security
+  fundingAmount: '0.01',                                   // optional; default '0.01' NEAR
+});
+
+const result: CreateAccountResult = await manager.createAccount('user-id');
+// result.nearAccountId  matches /^[a-f0-9]{64}$/  (64-char hex implicit account)
+// result.mpcPublicKey   is `ed25519:${bs58.encode(publicKeyBytes)}`
+// result.derivationPath is `near-anon-auth,user-id`
+// result.onChain        is true after successful funding
+```
+
+### Derivation function
+
+The account ID is a pure function of `(derivationSalt, userId)` — same arguments always produce the same account. There is no randomness; idempotent retry is safe.
+
+```
+seedInput      = `implicit-${derivationSalt}-${userId}`
+seed           = SHA-256(seedInput)
+publicKeyBytes = first 32 bytes of SHA-512(seed)
+nearAccountId  = publicKeyBytes.toString('hex')         // 64-char lowercase hex
+mpcPublicKey   = `ed25519:${bs58.encode(publicKeyBytes)}`
+derivationPath = `near-anon-auth,${userId}`
+```
+
+If `derivationSalt` is omitted (only possible via the looser internal `MPCConfig` type), account IDs become predictable from user IDs alone — the standalone `MPCAccountManagerConfig` type makes the salt REQUIRED at compile time.
+
+### Idempotency (MPC-03)
+
+`createAccount(userId)` is idempotent. A second call against an already-provisioned account short-circuits via `view_account` and issues zero additional `broadcast_tx_commit` calls — the existing on-chain account is returned with `onChain: true`.
+
+### Concurrent calls (MPC-06)
+
+Two concurrent `createAccount` calls for the same `userId` from different replicas converge to a single provisioned account. The loser of the nonce race retries `view_account` once and returns success when the winner has already provisioned the account.
+
+### Error paths (MPC-10)
+
+`createAccount` throws when:
+
+| Condition | Thrown error | Suggested HTTP status |
+|-----------|--------------|-----------------------|
+| NEAR RPC is unreachable (fetch throws) | `Error('RPC unreachable', { cause })` | 503 |
+| Treasury balance is too low | `Error('Treasury underfunded', { cause })` | 503 |
+| Any other broadcast failure | `Error('Transfer failed', { cause })` | 502 |
+
+The `cause` field always contains the original RPC error message for debugging.
+
+`verifyRecoveryWallet` throws **only** when the NEAR RPC is unreachable (consumer should return 500). It returns `false` (does not throw) for missing accounts, FunctionCall-only keys, or unknown access keys.
+
+### Security expectations
+
+- **`derivationSalt` is REQUIRED** at the type level — TypeScript rejects an `MPCAccountManagerConfig` literal that omits it. Use a per-tenant secret salt to prevent cross-tenant account ID collision.
+- **`treasuryPrivateKey` is never logged** — the manager replaces the raw string with a `KeyPair` object on construction. The default-silent pino logger is wired with redact paths (`config.treasuryPrivateKey`, `*.treasuryPrivateKey`); even an accidental `log.info({ config }, '...')` emits `[Redacted]` instead of the secret.
+- **Transactions are signed in-process** — no `near-cli` shell-out, no `process.exec` injection vector.
+- **`verifyRecoveryWallet` returns true ONLY for `FullAccess` keys** — FunctionCall-scoped keys (which cannot sign arbitrary transactions) cannot satisfy recovery verification.
+- **Dist bundle is leak-audited** — the published `dist/server/index.js` is checked at build time to confirm zero `ed25519:<base58>` string literals are baked in.
+
+### Frozen contract (consumer pin)
+
+The following surface is FROZEN — no field, method, or return-shape rename without a coordinated PR:
+
+- `class MPCAccountManager`
+- `createAccount(userId: string): Promise<CreateAccountResult>`
+- `verifyRecoveryWallet(nearAccountId: string, recoveryWalletPublicKey: string): Promise<boolean>`
+- `interface MPCAccountManagerConfig` (with `derivationSalt: string` REQUIRED)
+- `type CreateAccountResult` (= `MPCAccount`)
 
 ## API Routes
 
