@@ -85,6 +85,12 @@ export interface PasskeyManager {
     verified: boolean;
     userId?: string;
     passkey?: Passkey;
+    /** Fresh BE/BS values re-read from the assertion (not the stored DB row).
+     *  Present when verification succeeded; consumed by router for response surface. */
+    passkeyData?: {
+      backedUp: boolean;
+      deviceType: 'singleDevice' | 'multiDevice';
+    };
   }>;
 }
 
@@ -293,19 +299,35 @@ export function createPasskeyManager(
         return { verified: false };
       }
       
+      // Pitfall 1 mitigation: read FRESH BS/BE values from the assertion's verification
+      // result, NOT from the stored `passkey` row (which may be stale).
+      const freshBackedUp = verification.authenticationInfo.credentialBackedUp;
+      const freshDeviceType = verification.authenticationInfo.credentialDeviceType;
+
       // Update counter
       await db.updatePasskeyCounter(
         passkey.credentialId,
         verification.authenticationInfo.newCounter
       );
-      
+
+      // BACKUP-02: persist the freshly-read backed_up only when it changed.
+      // The adapter method is OPTIONAL — fall back silently if a custom adapter
+      // doesn't implement it (project constraint: optional with internal fallback).
+      if (freshBackedUp !== passkey.backedUp && db.updatePasskeyBackedUp) {
+        await db.updatePasskeyBackedUp(passkey.credentialId, freshBackedUp);
+      }
+
       // Clean up challenge
       await db.deleteChallenge(challengeId);
-      
+
       return {
         verified: true,
         userId: passkey.userId,
         passkey,
+        passkeyData: {
+          backedUp: freshBackedUp,
+          deviceType: freshDeviceType,
+        },
       };
     },
   };
