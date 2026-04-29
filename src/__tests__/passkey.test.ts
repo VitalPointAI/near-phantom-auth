@@ -470,4 +470,141 @@ describe('finishAuthentication', () => {
       manager.finishAuthentication('expired-auth-challenge', {} as any)
     ).rejects.toThrow('Challenge expired');
   });
+
+  // BACKUP-02 TDD tests — RED phase for Task 2 (11-05)
+
+  it('BACKUP-02: finishAuthentication returns passkeyData with FRESH backedUp from verification result', async () => {
+    // FRESH assertion: backedUp=true, deviceType=multiDevice
+    vi.mocked(verifyAuthenticationResponse).mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 2,
+        credentialBackedUp: true,
+        credentialDeviceType: 'multiDevice',
+      },
+    } as any);
+
+    const manager = createPasskeyManager(db, testConfig);
+    const { challengeId } = await manager.startAuthentication('user-1');
+
+    const result = await manager.finishAuthentication(challengeId, {
+      id: 'credential-id-1',
+      rawId: 'credential-id-1',
+      response: {
+        clientDataJSON: 'test',
+        authenticatorData: 'test',
+        signature: 'test',
+      },
+      type: 'public-key',
+      clientExtensionResults: {},
+    } as any);
+
+    expect(result.verified).toBe(true);
+    expect(result.passkeyData).toBeDefined();
+    expect(result.passkeyData?.backedUp).toBe(true);
+    expect(result.passkeyData?.deviceType).toBe('multiDevice');
+  });
+
+  it('BACKUP-02: BS-bit-flip calls db.updatePasskeyBackedUp when fresh value differs from stored row', async () => {
+    // Stored row has backedUp: false (MOCK_PASSKEY default)
+    // Fresh assertion reports backedUp: true → value changed → should persist
+    vi.mocked(verifyAuthenticationResponse).mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 2,
+        credentialBackedUp: true,       // FRESH (different from stored false)
+        credentialDeviceType: 'multiDevice',
+      },
+    } as any);
+
+    const updatePasskeyBackedUp = vi.fn().mockResolvedValue(undefined);
+    const dbWithUpdate = makeMockDb({ updatePasskeyBackedUp });
+
+    const manager = createPasskeyManager(dbWithUpdate, testConfig);
+    const { challengeId } = await manager.startAuthentication('user-1');
+
+    await manager.finishAuthentication(challengeId, {
+      id: 'credential-id-1',
+      rawId: 'credential-id-1',
+      response: {
+        clientDataJSON: 'test',
+        authenticatorData: 'test',
+        signature: 'test',
+      },
+      type: 'public-key',
+      clientExtensionResults: {},
+    } as any);
+
+    // Should have called updatePasskeyBackedUp once with the new true value
+    expect(updatePasskeyBackedUp).toHaveBeenCalledOnce();
+    expect(updatePasskeyBackedUp).toHaveBeenCalledWith('credential-id-1', true);
+  });
+
+  it('BACKUP-02: no spurious write when fresh backedUp matches stored row', async () => {
+    // Stored row has backedUp: false (MOCK_PASSKEY default)
+    // Fresh assertion also reports false → no change → should NOT call updatePasskeyBackedUp
+    vi.mocked(verifyAuthenticationResponse).mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 2,
+        credentialBackedUp: false,      // matches stored
+        credentialDeviceType: 'singleDevice',
+      },
+    } as any);
+
+    const updatePasskeyBackedUp = vi.fn().mockResolvedValue(undefined);
+    const dbWithUpdate = makeMockDb({ updatePasskeyBackedUp });
+
+    const manager = createPasskeyManager(dbWithUpdate, testConfig);
+    const { challengeId } = await manager.startAuthentication('user-1');
+
+    await manager.finishAuthentication(challengeId, {
+      id: 'credential-id-1',
+      rawId: 'credential-id-1',
+      response: {
+        clientDataJSON: 'test',
+        authenticatorData: 'test',
+        signature: 'test',
+      },
+      type: 'public-key',
+      clientExtensionResults: {},
+    } as any);
+
+    expect(updatePasskeyBackedUp).not.toHaveBeenCalled();
+  });
+
+  it('BACKUP-02: graceful fallback when db.updatePasskeyBackedUp is absent (does NOT throw)', async () => {
+    // db does NOT have updatePasskeyBackedUp — should not throw
+    vi.mocked(verifyAuthenticationResponse).mockResolvedValueOnce({
+      verified: true,
+      authenticationInfo: {
+        newCounter: 2,
+        credentialBackedUp: true,       // FRESH (different from stored false)
+        credentialDeviceType: 'multiDevice',
+      },
+    } as any);
+
+    // makeMockDb does NOT add updatePasskeyBackedUp — it's optional and absent
+    const dbNoUpdate = makeMockDb();
+    delete (dbNoUpdate as any).updatePasskeyBackedUp;
+
+    const manager = createPasskeyManager(dbNoUpdate, testConfig);
+    const { challengeId } = await manager.startAuthentication('user-1');
+
+    // Should complete without throwing even though updatePasskeyBackedUp is absent
+    const result = await manager.finishAuthentication(challengeId, {
+      id: 'credential-id-1',
+      rawId: 'credential-id-1',
+      response: {
+        clientDataJSON: 'test',
+        authenticatorData: 'test',
+        signature: 'test',
+      },
+      type: 'public-key',
+      clientExtensionResults: {},
+    } as any);
+
+    expect(result.verified).toBe(true);
+    expect(result.passkeyData?.backedUp).toBe(true);
+  });
 });
