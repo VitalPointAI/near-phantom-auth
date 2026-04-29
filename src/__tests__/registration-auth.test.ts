@@ -466,6 +466,80 @@ describe('Authentication flow', () => {
 
     expect(mockSessionManager.createSession).toHaveBeenCalledOnce();
   });
+
+  it('BACKUP-02: /login/finish surfaces FRESH backedUp from assertion (not stored row)', async () => {
+    // Stored row: backed_up = false (older registration)
+    mockDb = makeMockDb({
+      getPasskeyById: vi.fn().mockResolvedValue({
+        credentialId: 'cred-flip-1',
+        userId: 'user-flip-1',
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        deviceType: 'multiDevice',
+        backedUp: false,   // STALE
+      }),
+      getUserById: vi.fn().mockResolvedValue({
+        id: 'user-flip-1',
+        codename: 'ECHO-FOXTROT-5',
+        nearAccountId: 'flip123abc',
+        mpcPublicKey: 'ed25519:FLIPKEY',
+        derivationPath: 'near-anon-auth,user-flip-1',
+        createdAt: new Date(),
+      }),
+    });
+    // Fresh assertion reports BS=1 (just got backed up)
+    mockPasskeyManager.finishAuthentication.mockResolvedValueOnce({
+      verified: true,
+      userId: 'user-flip-1',
+      passkey: {
+        credentialId: 'cred-flip-1',
+        userId: 'user-flip-1',
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        deviceType: 'multiDevice',
+        backedUp: false,  // stale row that was loaded
+      },
+      passkeyData: { backedUp: true, deviceType: 'multiDevice' },  // FRESH from assertion
+    });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/login/finish')
+      .send({ challengeId: 'chal-flip-1', response: validAuthenticationResponse });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      codename: expect.any(String),
+      passkey: { backedUp: true, backupEligible: true },
+    });
+    // Per D-LOGIN-NEARACCOUNTID: response must NOT include nearAccountId
+    expect(res.body.nearAccountId).toBeUndefined();
+  });
+
+  it('BACKUP-02: /login/finish singleDevice returns backupEligible:false', async () => {
+    mockPasskeyManager.finishAuthentication.mockResolvedValueOnce({
+      verified: true,
+      userId: 'user-1',
+      passkey: {
+        credentialId: 'cred-sd-1',
+        userId: 'user-1',
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        deviceType: 'singleDevice',
+        backedUp: false,
+      },
+      passkeyData: { backedUp: false, deviceType: 'singleDevice' },
+    });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/login/finish')
+      .send({ challengeId: 'chal-sd-1', response: validAuthenticationResponse });
+
+    expect(res.status).toBe(200);
+    expect(res.body.passkey).toEqual({ backedUp: false, backupEligible: false });
+  });
 });
 
 describe('Session', () => {
