@@ -196,6 +196,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       rateLimiting: config.rateLimiting,
       csrf: config.csrf,
       oauthManager,
+      hooks: config.hooks,                        // Phase 11 HOOK-01
     });
   }
 
@@ -215,6 +216,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     logger,
     rateLimiting: config.rateLimiting,
     csrf: config.csrf,
+    hooks: config.hooks,                          // Phase 11 HOOK-01
   });
 
   return {
@@ -244,6 +246,7 @@ export { createEmailService, type EmailService, type EmailConfig } from './email
 // Re-export types and utilities
 export type {
   AnonAuthConfig,
+  AnonAuthHooks,        // Phase 11 HOOK-01 re-export
   DatabaseAdapter,
   AnonUser,
   OAuthUser,

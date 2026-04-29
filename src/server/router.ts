@@ -14,7 +14,7 @@ import type { PasskeyManager } from './passkey.js';
 import type { MPCAccountManager } from './mpc.js';
 import type { WalletRecoveryManager } from './recovery/wallet.js';
 import type { IPFSRecoveryManager } from './recovery/ipfs.js';
-import type { DatabaseAdapter, CodenameConfig, RateLimitConfig, CsrfConfig } from '../types/index.js';
+import type { DatabaseAdapter, CodenameConfig, RateLimitConfig, CsrfConfig, AnonAuthHooks } from '../types/index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
@@ -47,6 +47,8 @@ export interface RouterConfig {
   rateLimiting?: RateLimitConfig;
   /** Optional CSRF config (Double Submit Cookie) */
   csrf?: CsrfConfig;
+  /** Phase 11 scaffolding — accepted and stored; call sites wired in Phases 13–15. */
+  hooks?: AnonAuthHooks;
 }
 
 export function createRouter(config: RouterConfig): Router {

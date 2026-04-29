@@ -12,7 +12,7 @@ import cookieParser from 'cookie-parser';
 import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
-import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig } from '../../types/index.js';
+import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig, AnonAuthHooks } from '../../types/index.js';
 import type { EmailService } from '../email.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
 import pino from 'pino';
@@ -39,6 +39,8 @@ export interface OAuthRouterConfig {
   emailService?: EmailService;
   /** Optional pre-created OAuthManager instance. If omitted, one is created internally. */
   oauthManager?: OAuthManager;
+  /** Phase 11 scaffolding — accepted and stored; call sites wired in Phases 13–15. */
+  hooks?: AnonAuthHooks;
 }
 
 export function createOAuthRouter(config: OAuthRouterConfig): Router {
