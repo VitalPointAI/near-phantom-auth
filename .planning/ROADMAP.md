@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v0.6.1 — MPCAccountManager Hotfix
 
-- [ ] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class to unblock Ledgera mpc-sidecar production restart loop; additive only, contract FROZEN by consumer pin
+- [x] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class to unblock Ledgera mpc-sidecar production restart loop; additive only, contract FROZEN by consumer pin (completed 2026-04-29)
 
 ## Phase Details
 
@@ -218,7 +218,7 @@ Plans:
 - [x] 10-03-PLAN.md — checkWalletAccess FullAccess permission gate + wallet.test.ts MPC-05 cases (MPC-04, MPC-05)
 - [x] 10-04-PLAN.md — MPCAccountManager class hardening (KeyPair field, parseNearAmount, throw paths, nonce-race convergence) + populate T1-T12 (MPC-02, MPC-03, MPC-06, MPC-08, MPC-09, MPC-10, MPC-11)
 - [x] 10-05-PLAN.md — Treasury leak audit (Pino redact + dist grep + log-stream fixture + type-level salt enforcement) (MPC-07, MPC-09)
-- [ ] 10-06-PLAN.md — Bump to 0.6.1, CHANGELOG.md, README.md MPCAccountManager section, npm publish, smoke install (MPC-12; autonomous: false)
+- [x] 10-06-PLAN.md — Bump to 0.6.1, CHANGELOG.md, README.md MPCAccountManager section, npm publish, smoke install (MPC-12; autonomous: false)
 
 ### v0.6.1 Progress
 
@@ -227,4 +227,4 @@ Phase 10 is the sole phase of milestone v0.6.1.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. MPCAccountManager | 5/6 | In Progress|  |
+| 10. MPCAccountManager | 6/6 | Complete   | 2026-04-29 |
