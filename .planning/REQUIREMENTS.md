@@ -24,7 +24,7 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 
 ### Hooks Scaffolding + 2FA Enrolment Hook (F2)
 
-- [ ] **HOOK-01**: `AnonAuthConfig.hooks` field accepts an optional callbacks object: `{ afterAuthSuccess?, backfillKeyBundle?, onAuthEvent? }`. Threaded through `createAnonAuth → createRouter / createOAuthRouter`. All callbacks optional; absent hooks → behavior identical to v0.6.1.
+- [x] **HOOK-01**: `AnonAuthConfig.hooks` field accepts an optional callbacks object: `{ afterAuthSuccess?, backfillKeyBundle?, onAuthEvent? }`. Threaded through `createAnonAuth → createRouter / createOAuthRouter`. All callbacks optional; absent hooks → behavior identical to v0.6.1.
 - [ ] **HOOK-02**: `hooks.afterAuthSuccess(ctx)` fires inside `/register/finish` after DB persist + MPC funding, before `sessionManager.createSession`. Hook receives `{ userId, codename, nearAccountId, authMethod: 'passkey-register', req }` and returns `Promise<{ continue: true } | { continue: false; status: number; body: object }>`. `continue: false` returns the consumer's `body` with the supplied `status` and skips session creation. Hook throw → DB rollback via existing `db.transaction()` wrapper.
 - [ ] **HOOK-03**: Same hook fires inside `/login/finish` (`authMethod: 'passkey-login'`) after passkey verify, before session creation. Same return-shape contract.
 - [ ] **HOOK-04**: Same hook fires inside OAuth `/callback` (`authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter'`) after token exchange + user resolution, before session creation. `provider` exposed on `ctx`.
@@ -119,7 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BACKUP-03 | Phase 11 | Pending |
 | BACKUP-04 | Phase 11 | Pending |
 | BACKUP-05 | Phase 11 | Complete |
-| HOOK-01 | Phase 11 | Pending |
+| HOOK-01 | Phase 11 | Complete |
 | HOOK-02 | Phase 14 | Pending |
 | HOOK-03 | Phase 14 | Pending |
 | HOOK-04 | Phase 14 | Pending |
