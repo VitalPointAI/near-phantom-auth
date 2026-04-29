@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.6.1
 milestone_name: MPCAccountManager hotfix
-status: milestone_complete
+status: completed
 stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-28T23:07:36.049Z"
-last_activity: 2026-04-28 -- Phase 10 execution started
+last_updated: "2026-04-29T13:05:08.240Z"
+last_activity: 2026-04-29
 progress:
   total_phases: 10
   completed_phases: 10
   total_plans: 31
-  completed_plans: 25
+  completed_plans: 31
   percent: 100
 ---
 
@@ -146,6 +146,20 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 None yet.
+
+## Deferred Items
+
+Items acknowledged and deferred at v0.6.1 milestone close on 2026-04-29.
+Carried over from v0.6.0 (which was never formally closed via /gsd-complete-milestone).
+These require physical devices for cross-browser PRF testing and are orthogonal
+to the v0.6.1 MPCAccountManager hotfix.
+
+| Category | Phase | Item | Status | Open scenarios | Reason deferred |
+|----------|-------|------|--------|----------------|-----------------|
+| uat_gap | 09 | 09-HUMAN-UAT.md | partial | 6 | WebAuthn PRF cross-browser testing — needs Firefox/Safari/hardware keys |
+| verification_gap | 09 | 09-VERIFICATION.md | human_needed | n/a | Final PRF browser-support verification awaiting hardware availability |
+
+To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UAT.md, then re-run the verifier on phase 09.
 
 ### Blockers/Concerns
 

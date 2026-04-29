@@ -8,19 +8,26 @@ A privacy-first authentication SDK (`@vitalpoint/near-phantom-auth`) providing a
 
 Every security-sensitive code path must be correct, tested, and production-safe. A security-focused auth library with bugs and stubs erodes trust in the entire system.
 
-## Current Milestone: v0.6.1 Unblock Ledgera mpc-sidecar (MPCAccountManager)
+## Current State
 
-**Goal:** Ship the missing `MPCAccountManager` class on `@vitalpoint/near-phantom-auth/server` so a downstream consumer (Ledgera mpc-sidecar) stops crash-looping in production. Pure additive surface — no v0.6.0 export changes.
+**Shipped version: v0.6.1** (2026-04-29) — `@vitalpoint/near-phantom-auth@0.6.1` is live on the npm registry.
 
-**Target features:**
-- Export `MPCAccountManager` class with FROZEN contract: `createAccount(userId)` and `verifyRecoveryWallet(nearAccountId, publicKey)`
-- Idempotent, atomic NEAR account provisioning (deterministic derivation + funding transfer; second call short-circuits via `view_account`)
-- Recovery wallet verification via `view_access_key_list` (full-access keys only; signature verification stays consumer-side)
-- Test coverage for all 12 scenarios (T1–T12) — concurrency, cross-tenant isolation, RPC failure, function-call-only access keys, hex format, etc.
-- Treasury private key never logged, never written to disk; in-process signing only
-- README + CHANGELOG; `npm publish` v0.6.1
+**v0.6.1 closed:** Phase 10 (MPCAccountManager hotfix) — surgical fix for the `export type`-stripped class that was causing the Ledgera mpc-sidecar restart loop. All 12 MPC-* requirements satisfied; fresh-consumer smoke install confirms `typeof MPCAccountManager === 'function'`. The downstream consumer is unblocked.
 
-**Single-phase hotfix milestone.** v0.7.0 (5 forward-looking items: backup-eligibility flag, second-factor enrolment hook, lazy-backfill hook, multi-RP_ID, registration analytics) is a separate future milestone.
+## Next Milestone Goals
+
+**v0.7.0 candidates (deferred to next milestone cycle — run `/gsd-new-milestone` to formalize):**
+- Backup-eligibility flag exposure on `register()` / `login()` results
+- Second-factor enrolment hook (consumer-defined post-passkey step)
+- Lazy-backfill hook for pre-v0.6.0 accounts with NULL key bundles
+- Multi-RP_ID verification (cross-domain passkey support)
+- Registration analytics hook (without compromising anonymity)
+
+**Carry-over from v0.6.0 PRF milestone (recorded in `STATE.md > Deferred Items`):**
+- 6 cross-browser PRF UAT scenarios (Firefox, Safari, hardware keys) — needs physical devices
+- 1 verification gap on Phase 09 (`human_needed` until PRF UAT clears)
+
+These are independent of the v0.7.0 scope but should be cleared before v0.7.0 ships if they touch the same code paths.
 
 ## Requirements
 
@@ -64,21 +71,25 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 - ✓ Test coverage across hardened modules — 252 tests, 8/8 automated verifications (Phase 7)
 - ✓ OAuth callback wired to DB-backed `validateState()`, single `cookieParser` mount (Phase 8)
 - ✓ WebAuthn PRF extension for DEK sealing-key derivation — `sealingKeyHex` threaded through finish endpoints, library bumped to v0.6.0 (12 PRF-* requirements, Phase 9)
+- ✓ **v0.6.1 MPCAccountManager hotfix** — Phase 10 (12/12 MPC-* requirements):
+  - ✓ MPC-01: `MPCAccountManager` value-exported from `/server`; consumer can `import { MPCAccountManager }` and instantiate at runtime
+  - ✓ MPC-02: deterministic derivation — same `(treasuryAccount, userId, derivationSalt)` always produces the same `nearAccountId / mpcPublicKey / derivationPath`
+  - ✓ MPC-03: `createAccount` idempotent — second call short-circuits via `view_account`, zero duplicate broadcasts
+  - ✓ MPC-04: `nearAccountId` matches `/^[a-f0-9]{64}$/`; `verifyRecoveryWallet` returns false (no throw) for UNKNOWN_ACCOUNT
+  - ✓ MPC-05: `verifyRecoveryWallet` returns true ONLY for FullAccess keys; FunctionCall and UNKNOWN_ACCESS_KEY return false
+  - ✓ MPC-06: concurrent `createAccount` calls converge — nonce-race losers retry `view_account` once
+  - ✓ MPC-07: `MPCAccountManagerConfig.derivationSalt` REQUIRED at the type level (tsc-fail fixture verifies)
+  - ✓ MPC-08: yoctoNEAR conversion uses `parseNearAmount` from `@near-js/utils`
+  - ✓ MPC-09: KeyPair object replaces raw private-key string field; pino redact paths wired into default logger; dist bundle leak-audited
+  - ✓ MPC-10: classified throws (`RPC unreachable` / `Treasury underfunded` / `Transfer failed`) with `cause` set
+  - ✓ MPC-11: T1–T12 test scaffold populated with real assertions + 3 bonus cases
+  - ✓ MPC-12: `npm publish @vitalpoint/near-phantom-auth@0.6.1` succeeded; smoke install confirms; git tag `v0.6.1` pushed
 
 ### Active
 
-<!-- Current scope: v0.6.1 hotfix — additive only, contract FROZEN. -->
+<!-- v0.6.1 has shipped. Next milestone goals listed under "Next Milestone Goals" above. -->
 
-**v0.6.1 — MPCAccountManager hotfix:**
-- [ ] **MPC-01**: Export `MPCAccountManager` class from `@vitalpoint/near-phantom-auth/server` (ESM + CJS + types)
-- [ ] **MPC-02**: `createAccount(userId)` is a pure function of `(treasuryAccount, userId, derivationSalt)` — same input → same `nearAccountId/mpcPublicKey/derivationPath` across calls
-- [ ] **MPC-03**: `createAccount(userId)` is idempotent and atomic — second call short-circuits via `view_account` and does NOT issue a duplicate funding transfer
-- [ ] **MPC-04**: `nearAccountId` returned from `createAccount` matches `/^[a-f0-9]{64}$/` (implicit-account hex format)
-- [ ] **MPC-05**: `verifyRecoveryWallet(nearAccountId, publicKey)` returns `true` only when key is in `view_access_key_list` AND has full-access permissions (function-call-only access → `false`; missing account → `false`; does NOT verify signatures)
-- [ ] **MPC-06**: Concurrent `createAccount(sameUserId)` calls converge to identical results with exactly one on-chain transfer (loser of nonce race retries `view_account`)
-- [ ] **MPC-07**: Treasury private key never logged, never persisted to disk, signed in-process only (no `near-cli` shell-out); pino redaction covers `treasuryPrivateKey` and any nested holders
-- [ ] **MPC-08**: Test suite covers T1–T12 from spec (mix of testnet integration + unit tests with RPC mocks)
-- [ ] **MPC-09**: README documents the class, derivation function, security expectations; CHANGELOG entry calls out additive surface; `npm publish` v0.6.1 succeeds and a fresh consumer can import + instantiate + call `createAccount` against testnet end-to-end
+No active requirements. Run `/gsd-new-milestone` to define the v0.7.0 scope.
 
 ### Out of Scope
 
@@ -95,13 +106,16 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 ## Context
 
-- Published npm package; current shipped version is **v0.6.0** (bumped at end of Phase 9). Next release is **v0.6.1** (this milestone)
-- A downstream consumer (Ledgera mpc-sidecar) is in a production restart loop on v0.6.0 because `MPCAccountManager` is not exported from `/server` — fixing that is the BLOCKING reason for this milestone
-- v0.6.0 `/server` export surface (must be preserved unchanged): `POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration`
-- TypeScript strict mode remains disabled — not changing in this milestone
-- vitest configured; v0.5 added 252 tests (Phase 7); v0.6.1 adds T1–T12 for `MPCAccountManager`
-- Node.js >= 18 required; development environment has Node 12 (use nvm to switch to 20)
-- Codebase map available at `.planning/codebase/`; v0.5 audit at `.planning/v0.5-MILESTONE-AUDIT.md`
+- Published npm package; **current shipped version is v0.6.1** (latest, 2026-04-29).
+- The Ledgera mpc-sidecar restart loop is resolved — fresh-consumer smoke install confirmed `typeof MPCAccountManager === 'function'` and instantiation succeeds.
+- v0.6.1 `/server` export surface (additive only — all v0.6.0 exports preserved):
+  `POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration`
+  **+ new in v0.6.1:** `MPCAccountManager` (class, value export), `MPCAccountManagerConfig` (type), `CreateAccountResult` (type), `MPCConfig` (type, internal), `MPCAccount` (type).
+- TypeScript strict mode remains disabled — not changing.
+- vitest test suite: 280 (252 v0.5.x baseline + 12 PRF in v0.6.0 + 28 MPC + leak-audit + exports in v0.6.1) + 4 testnet-skipped = 286 total, 0 failures.
+- Node.js >= 18 required; development environment has Node 12 (use nvm to switch to 20).
+- Codebase map at `.planning/codebase/`; v0.5 audit at `.planning/v0.5-MILESTONE-AUDIT.md`; v0.6.1 archive at `.planning/milestones/v0.6.1-ROADMAP.md` and `v0.6.1-REQUIREMENTS.md`.
+- **Known deferred:** 6 cross-browser PRF UAT scenarios + 1 verification gap on Phase 09 (carried over from v0.6.0; needs physical Firefox / Safari / hardware key devices). Tracked in `STATE.md > Deferred Items`.
 
 ## Constraints
 
@@ -120,11 +134,14 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 | Skip auto-recovery for OAuth until email works | Can't deliver recovery passwords without email service | Resolved via Phase 6 SES |
 | zod for runtime validation | Lightweight, TypeScript-native, good DX | Shipped (Phase 2) |
 | WebAuthn PRF extension for DEK sealing key | Cryptographic key derivation tied to passkey, stronger than password-derived | Shipped (Phase 9) |
-| v0.6.1 ships as patch (additive only) instead of bundling with v0.7.0 | Consumer is in production restart loop NOW; bundling holds the BLOCKING fix behind the slowest of 5 forward-looking items | — Pending |
-| `MPCAccountManager` contract is FROZEN by consumer pin | Renaming any field/method/return-shape key requires coordinated PR with downstream consumer | — Pending |
-| `nearAccountId` returned as 64-char lowercase-hex implicit account | Consumer's contract test greps for `/^[a-f0-9]{64}$/`; named-account support would be a major-version break | — Pending |
-| `verifyRecoveryWallet` does NOT verify signatures | Consumer's two-step flow runs `tweetnacl.sign.detached.verify` after; separation lets consumer choose signature library | — Pending |
-| `derivationSalt` is REQUIRED in `MPCAccountManagerConfig` | Treasury alone is not sufficient entropy when consumers may share treasuries during staging or multi-tenant deploys | — Pending |
+| v0.6.1 ships as patch (additive only) instead of bundling with v0.7.0 | Consumer is in production restart loop NOW; bundling holds the BLOCKING fix behind the slowest of 5 forward-looking items | ✓ Good (Phase 10) — patch shipped 2026-04-29; consumer unblocked |
+| `MPCAccountManager` contract is FROZEN by consumer pin | Renaming any field/method/return-shape key requires coordinated PR with downstream consumer | ✓ Good (Phase 10) — contract documented in README under "Frozen contract" |
+| `nearAccountId` returned as 64-char lowercase-hex implicit account | Consumer's contract test greps for `/^[a-f0-9]{64}$/`; named-account support would be a major-version break | ✓ Good (Phase 10) — every test in `mpc-account-manager.test.ts` asserts the regex |
+| `verifyRecoveryWallet` does NOT verify signatures | Consumer's two-step flow runs `tweetnacl.sign.detached.verify` after; separation lets consumer choose signature library | ✓ Good (Phase 10) — wrapper delegates only to `checkWalletAccess` (FullAccess gate); signatures stay consumer-side |
+| `derivationSalt` is REQUIRED in `MPCAccountManagerConfig` | Treasury alone is not sufficient entropy when consumers may share treasuries during staging or multi-tenant deploys | ✓ Good (Phase 10) — enforced at the TypeScript type level; tsc-fail fixture verifies |
+| MPC-10 throws over degraded returns | Returning `mpcPublicKey: 'creation-failed'` masks failures; classified throws let callers branch on `cause` | ✓ Good (Phase 10) — `RPC unreachable` / `Treasury underfunded` / `Transfer failed` |
+| MPC-09 KeyPair field replaces raw treasury string | Holding a raw private-key string as a class field invites accidental serialization (logs, JSON.stringify) | ✓ Good (Phase 10) — `keyPair?: KeyPair`; pino redact paths wired; dist leak-audited |
+| Plan 10-05 Gate 1 wording softened: gate VALUE leaks only | Field NAME `treasuryPrivateKey` is unavoidable in property-access patterns (constructor must read `config.treasuryPrivateKey`); only key VALUE leaks are real | ✓ Good (Phase 10) — `ed25519:<base58>` literal scan stays at zero matches |
 
 ## Evolution
 
@@ -144,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-28 — milestone v0.6.1 started: ship `MPCAccountManager` to unblock Ledgera mpc-sidecar production restart loop. v0.5 milestone closed (35/35 requirements satisfied per audit; library at v0.6.0). v0.7.0 forward-looking items deferred to a separate future milestone.*
+*Last updated: 2026-04-29 after v0.6.1 milestone — `@vitalpoint/near-phantom-auth@0.6.1` published to npm; Ledgera mpc-sidecar restart loop closed end-to-end. v0.7.0 candidates listed under "Next Milestone Goals"; run `/gsd-new-milestone` to define scope.*
