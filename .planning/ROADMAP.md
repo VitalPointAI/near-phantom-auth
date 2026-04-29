@@ -95,9 +95,9 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. An attacker on `evil.com` forging an assertion with a spoofed `clientDataJSON.origin` against a multi-RP_ID-enabled instance gets `verified: false` from `verifyAuthenticationResponse` — the paired tuple is preserved by index through to `@simplewebauthn/server`.
   4. A consumer importing standalone `verifyRegistration()` / `verifyAuthentication()` can pass `expectedRPID` and `expectedOrigin` as `string | string[]`; the existing `string` form continues to compile and verify identically (backwards compat).
   5. A consumer reading the README finds the `/.well-known/webauthn` consumer responsibility documented (library does NOT auto-host) with links to passkeys.dev and the W3C Passkey Endpoints spec, plus a copy-pasteable JSON skeleton.
-**Plans:** 4 plans across 3 waves
+**Plans:** 1/4 plans executed
 
-- [ ] 12-01-PLAN.md (Wave 1) — RPID-01 type foundation: RelatedOrigin paired-tuple interface, AnonAuthConfig.rp.relatedOrigins?: optional field, /server re-export, exports.test.ts regression
+- [x] 12-01-PLAN.md (Wave 1) — RPID-01 type foundation: RelatedOrigin paired-tuple interface, AnonAuthConfig.rp.relatedOrigins?: optional field, /server re-export, exports.test.ts regression
 - [ ] 12-02-PLAN.md (Wave 2) — RPID-02 startup-validator helper: pure-function validateRelatedOrigins (https-only, no wildcards, suffix-domain boundary, max 5, duplicate-of-primary) + Wave-0 unit tests (>=12 it() blocks)
 - [ ] 12-03-PLAN.md (Wave 2) — RPID-04 standalone exports: widen VerifyRegistrationInput / VerifyAuthenticationInput expectedOrigin and expectedRPID to string | string[]; positive compile fixtures
 - [ ] 12-04-PLAN.md (Wave 3) — RPID-03 + RPID-05 integration: PasskeyConfig.relatedOrigins, createAnonAuth startup-validate, conditional-spread idiom in passkey.ts (preserves string form when empty), README Cross-Domain Passkeys (v0.7.0) section
@@ -167,7 +167,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 9. WebAuthn PRF Extension | v0.6.0 | 3/3 | Complete | 2026-03-15 |
 | 10. MPCAccountManager | v0.6.1 | 6/6 | Complete | 2026-04-29 |
 | 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete    | 2026-04-29 |
-| 12. Multi-RP_ID Verification | v0.7.0 | 0/TBD | Not started | - |
+| 12. Multi-RP_ID Verification | v0.7.0 | 1/4 | In Progress|  |
 | 13. Registration Analytics Hook | v0.7.0 | 0/TBD | Not started | - |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |
 | 15. Lazy-Backfill Hook | v0.7.0 | 0/TBD | Not started | - |
