@@ -49,6 +49,7 @@ import type {
   AuthenticationResponseJSON,
   AuthenticatorTransport,
 } from '../types/index.js';
+import { deriveBackupEligibility } from './backup.js';
 import pino from 'pino';
 
 // Module-level silent logger — errors are still re-thrown, so consumers see them
@@ -107,10 +108,17 @@ export interface VerifyRegistrationResult {
     publicKey: Uint8Array;
     /** Counter - store and update for replay protection */
     counter: number;
-    /** Device type */
+    /** BE bit — set ONCE at credential creation. `'multiDevice'` if the
+     *  authenticator supports backup; `'singleDevice'` if not. Immutable. */
     deviceType: 'singleDevice' | 'multiDevice';
-    /** Whether backed up to cloud */
+    /** BS bit — current backup state. May FLIP from 0→1 over the credential's
+     *  lifetime. Re-read on every authentication assertion. */
     backedUp: boolean;
+    /** Convenience derived from BE bit: `deviceType === 'multiDevice'`.
+     *  Capability flag — does NOT mean the credential is currently backed up.
+     *  See `backedUp` for current state. Invariant: `backupEligible === false`
+     *  implies `backedUp === false`. */
+    backupEligible: boolean;
     /** Transport methods */
     transports?: AuthenticatorTransport[];
   };
@@ -226,9 +234,24 @@ export async function createRegistrationOptions(
 
 /**
  * Verify WebAuthn registration response
- * 
+ *
  * Call this when the client sends back their credential.
  * If verified, store the credential data in your database.
+ *
+ * @remarks
+ * Backup eligibility / state (WebAuthn Level 2 §6.1.3):
+ * - `result.credential.deviceType` reflects the BE bit (Backup Eligibility).
+ *   Set ONCE at credential creation; immutable for the credential's lifetime.
+ *   `'multiDevice'` means the authenticator class supports backup
+ *   (e.g., iCloud Keychain, Google Password Manager).
+ * - `result.credential.backedUp` reflects the BS bit (Backup State).
+ *   Current backup state; MAY FLIP 0→1 over the credential's lifetime as
+ *   the authenticator backs up the key. Re-read on every authentication.
+ * - `result.credential.backupEligible` is a convenience derived from BE
+ *   (`deviceType === 'multiDevice'`). Independent of `backedUp`: a multi-device
+ *   credential MAY not yet be backed up (`backupEligible: true, backedUp: false`).
+ * - Invariant: `backupEligible === false` implies `backedUp === false`
+ *   (a single-device credential cannot be backed up).
  */
 export async function verifyRegistration(
   input: VerifyRegistrationInput
@@ -257,6 +280,7 @@ export async function verifyRegistration(
         counter: registrationInfo.credential.counter,
         deviceType: registrationInfo.credentialDeviceType,
         backedUp: registrationInfo.credentialBackedUp,
+        backupEligible: deriveBackupEligibility(registrationInfo.credentialDeviceType),
         transports: response.response.transports,
       },
     };
