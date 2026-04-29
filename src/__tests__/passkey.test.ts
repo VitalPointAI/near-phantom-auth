@@ -107,7 +107,7 @@ function makeMockDb(overrides: Partial<DatabaseAdapter> = {}): DatabaseAdapter {
   };
 }
 
-const testConfig = { rpName: 'Test', rpId: 'localhost', origin: 'http://localhost:3000' };
+const testConfig = { rpName: 'Test', rpId: 'localhost', origin: 'http://localhost:3000', relatedOrigins: [] as const };
 
 // ============================================
 // 1. startRegistration
