@@ -12,7 +12,7 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 **Shipped version: v0.6.1** (2026-04-29) — `@vitalpoint/near-phantom-auth@0.6.1` is live on the npm registry.
 
-**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phase 11 complete: backup-eligibility flags + hooks scaffolding shipped).
+**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phase 12 complete: multi-RP_ID verification — paired-tuple `relatedOrigins` config, startup-validator with 6 failure branches, standalone-export type widening, README cross-domain contract).
 
 ## Current Milestone: v0.7.0 Consumer Hooks & Recovery Hardening
 
@@ -76,6 +76,7 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 - ✓ Test coverage across hardened modules — 252 tests, 8/8 automated verifications (Phase 7)
 - ✓ OAuth callback wired to DB-backed `validateState()`, single `cookieParser` mount (Phase 8)
 - ✓ WebAuthn PRF extension for DEK sealing-key derivation — `sealingKeyHex` threaded through finish endpoints, library bumped to v0.6.0 (12 PRF-* requirements, Phase 9)
+- ✓ **Multi-RP_ID verification (cross-domain passkeys)** — Phase 12 (5/5 RPID-* requirements): `RelatedOrigin` paired-tuple type + `AnonAuthConfig.rp.relatedOrigins` config field; `validateRelatedOrigins` startup helper with 6 classified failure branches (count cap, wildcard, https, localhost-coupling, suffix-domain boundary, duplicate-of-primary); standalone `VerifyRegistrationInput`/`VerifyAuthenticationInput` widened to `string | string[]` (backwards compat preserved); conditional-spread idiom in `passkey.ts` preserves paired tuple by index; README documents consumer-owned `/.well-known/webauthn` contract
 - ✓ **v0.6.1 MPCAccountManager hotfix** — Phase 10 (12/12 MPC-* requirements):
   - ✓ MPC-01: `MPCAccountManager` value-exported from `/server`; consumer can `import { MPCAccountManager }` and instantiate at runtime
   - ✓ MPC-02: deterministic derivation — same `(treasuryAccount, userId, derivationSalt)` always produces the same `nearAccountId / mpcPublicKey / derivationPath`
@@ -94,10 +95,8 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 <!-- v0.7.0 scope. REQ-IDs assigned in REQUIREMENTS.md after roadmap approval. -->
 
-- Backup-eligibility flag exposure on `register()` / `login()` results
 - Second-factor enrolment hook (consumer-defined post-passkey step)
 - Lazy-backfill hook for pre-v0.6.0 accounts with NULL key bundles
-- Multi-RP_ID verification (cross-domain passkey support)
 - Registration analytics hook (without compromising anonymity)
 
 ### Out of Scope
@@ -169,4 +168,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 — Phase 11 complete (BACKUP-01..05 + HOOK-01 shipped: `passkey: { backedUp, backupEligible }` on register/login finish responses; standalone `verifyRegistration()` exposes `backupEligible`; React `useAnonAuth` exposes `passkeyBackedUp` / `passkeyBackupEligible`; `AnonAuthHooks` scaffold threaded through both routers with zero call sites). Last shipped: v0.6.1 (2026-04-29). Next: Phase 12 multi-RP_ID verification.*
+*Last updated: 2026-04-29 — Phase 12 complete (RPID-01..05 shipped: `RelatedOrigin` paired-tuple type, `AnonAuthConfig.rp.relatedOrigins`, `validateRelatedOrigins` startup helper, conditional-spread integration in `passkey.ts`, standalone-export widening to `string | string[]`, README Cross-Domain Passkeys section with consumer-owned `/.well-known/webauthn` contract). Last shipped: v0.6.1 (2026-04-29). Next: Phase 13 registration analytics hook.*
