@@ -439,6 +439,9 @@ export interface RegistrationFinishResponse {
   success: boolean;
   codename: string;
   nearAccountId: string;
+  /** v0.7.0 — BACKUP-01 additive nested key. Optional for forward-compat with
+   *  degraded-path responses that may omit the flags. */
+  passkey?: { backedUp: boolean; backupEligible: boolean };
 }
 
 export interface AuthenticationStartResponse {
@@ -449,6 +452,9 @@ export interface AuthenticationStartResponse {
 export interface AuthenticationFinishResponse {
   success: boolean;
   codename: string;
+  /** v0.7.0 — BACKUP-02 additive nested key; backedUp is RE-READ from the
+   *  assertion on every login (BS bit may flip). */
+  passkey?: { backedUp: boolean; backupEligible: boolean };
 }
 
 export interface RecoveryWalletLinkResponse {
