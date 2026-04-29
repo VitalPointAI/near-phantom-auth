@@ -19,6 +19,7 @@ import {
   type CreateAccountResult,
   type MPCConfig,
   type MPCAccount,
+  type RelatedOrigin,         // Phase 12 RPID-01
 } from '../server/index.js';
 
 describe('MPC-01: MPCAccountManager runtime export', () => {
@@ -91,6 +92,25 @@ describe('MPC-01: source-level export shape', () => {
     const source = readFileSync(join(process.cwd(), 'src/server/index.ts'), 'utf-8');
     // Should not match `export type { MPCAccountManager,` (the old broken form)
     expect(source).not.toMatch(/^export type \{ MPCAccountManager,/m);
+  });
+});
+
+describe('RPID-01: RelatedOrigin type is re-exported from /server', () => {
+  it('RelatedOrigin type is importable as a type alias', () => {
+    // Compile-time check — if the type is not re-exported, tsc --noEmit
+    // fails before this test runs.
+    const ro: RelatedOrigin = {
+      origin: 'https://shopping.co.uk',
+      rpId: 'shopping.co.uk',
+    };
+    expect(ro.origin).toBe('https://shopping.co.uk');
+    expect(ro.rpId).toBe('shopping.co.uk');
+  });
+
+  it('src/server/index.ts contains a type re-export of RelatedOrigin', () => {
+    const source = readFileSync(join(process.cwd(), 'src/server/index.ts'), 'utf-8');
+    // Must appear inside the `export type { ... }` block alongside AnonAuthHooks
+    expect(source).toMatch(/export type \{[^}]*\bRelatedOrigin\b[^}]*\} from '\.\.\/types\/index\.js';/s);
   });
 });
 

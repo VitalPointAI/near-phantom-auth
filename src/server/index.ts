@@ -247,6 +247,7 @@ export { createEmailService, type EmailService, type EmailConfig } from './email
 export type {
   AnonAuthConfig,
   AnonAuthHooks,        // Phase 11 HOOK-01 re-export
+  RelatedOrigin,        // Phase 12 RPID-01 re-export
   DatabaseAdapter,
   AnonUser,
   OAuthUser,

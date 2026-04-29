@@ -58,6 +58,34 @@ export interface AnonAuthHooks {
   onAuthEvent?: (event: unknown) => void | Promise<void>;
 }
 
+/**
+ * Paired tuple binding a related origin to its rpId for cross-domain passkey
+ * support (WebAuthn Related Origin Requests, v0.7.0 RPID-01).
+ *
+ * Pairing is structural — the array is a list of pairs, NOT two parallel
+ * arrays. `@simplewebauthn/server@13.x` does NOT cross-check origin↔rpId
+ * pairing; it tests independent membership of each list. The paired-tuple
+ * shape IS the R3 origin-spoofing defense — it cannot be silently broken
+ * by a `.map()` reorder because the array IS the list of pairs.
+ *
+ * Validated at createAnonAuth() startup by validateRelatedOrigins() (Plan 02):
+ *   - https:// only (or http://localhost when rpId === 'localhost')
+ *   - no wildcards
+ *   - origin host MUST be a suffix-domain of rpId (label-boundary aware)
+ *   - max 5 entries
+ *
+ * The library does NOT auto-host /.well-known/webauthn — consumer
+ * responsibility (see README "Cross-Domain Passkeys" — added in Plan 04).
+ */
+export interface RelatedOrigin {
+  /** Origin for the related domain. Must be `https://...` (or
+   *  `http://localhost...` only when paired rpId === 'localhost'). */
+  origin: string;
+  /** RP ID for the related domain. Origin's host MUST be a suffix-domain
+   *  of this rpId (`host === rpId || host.endsWith('.' + rpId)`). */
+  rpId: string;
+}
+
 // ============================================
 // Configuration
 // ============================================
@@ -89,6 +117,12 @@ export interface AnonAuthConfig {
     id: string;
     /** Origin for WebAuthn (e.g., https://example.com) */
     origin: string;
+    /** Optional related origins for cross-domain passkey support (v0.7.0 RPID-01).
+     *  Max 5 entries; each origin's host MUST be a suffix-domain of its paired rpId.
+     *  Validated at createAnonAuth() startup by validateRelatedOrigins (Plan 02).
+     *  The library does NOT host /.well-known/webauthn — consumer responsibility
+     *  (see README "Cross-Domain Passkeys (v0.7.0)"). Default: undefined === []. */
+    relatedOrigins?: RelatedOrigin[];
   };
 
   /** Passkey / PRF configuration (WebAuthn Level 3 PRF extension) */
