@@ -4,8 +4,8 @@ milestone: v0.6.1
 milestone_name: MPCAccountManager hotfix
 status: executing
 stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-28T22:53:24.508Z"
-last_activity: 2026-04-28 -- Phase 10 planning complete
+last_updated: "2026-04-28T23:07:36.049Z"
+last_activity: 2026-04-28 -- Phase 10 execution started
 progress:
   total_phases: 10
   completed_phases: 9
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-28)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Milestone v0.6.1 — ship `MPCAccountManager` to unblock Ledgera mpc-sidecar (BLOCKING; consumer in production restart loop on v0.6.0)
+**Current focus:** Phase 10 — mpcaccountmanager
 
 ## Current Position
 
-Phase: Phase 10 — MPCAccountManager (roadmap complete; ready for planning)
-Plan: —
-Status: Ready to execute
-Last activity: 2026-04-28 -- Phase 10 planning complete
+Phase: 10 (mpcaccountmanager) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 10
+Last activity: 2026-04-28 -- Phase 10 execution started
 
 ## Performance Metrics
 
