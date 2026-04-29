@@ -216,7 +216,7 @@ Plans:
 - [x] 10-01-PLAN.md — Surgical export fix in src/server/index.ts + exports.test.ts regression gate (MPC-01)
 - [x] 10-02-PLAN.md — Wave-0 mpc-account-manager.test.ts scaffold with T1-T12 it.todo placeholders (test infra for MPC-02..MPC-06, MPC-10, MPC-11)
 - [x] 10-03-PLAN.md — checkWalletAccess FullAccess permission gate + wallet.test.ts MPC-05 cases (MPC-04, MPC-05)
-- [ ] 10-04-PLAN.md — MPCAccountManager class hardening (KeyPair field, parseNearAmount, throw paths, nonce-race convergence) + populate T1-T12 (MPC-02, MPC-03, MPC-06, MPC-08, MPC-09, MPC-10, MPC-11)
+- [x] 10-04-PLAN.md — MPCAccountManager class hardening (KeyPair field, parseNearAmount, throw paths, nonce-race convergence) + populate T1-T12 (MPC-02, MPC-03, MPC-06, MPC-08, MPC-09, MPC-10, MPC-11)
 - [ ] 10-05-PLAN.md — Treasury leak audit (Pino redact + dist grep + log-stream fixture + type-level salt enforcement) (MPC-07, MPC-09)
 - [ ] 10-06-PLAN.md — Bump to 0.6.1, CHANGELOG.md, README.md MPCAccountManager section, npm publish, smoke install (MPC-12; autonomous: false)
 
@@ -227,4 +227,4 @@ Phase 10 is the sole phase of milestone v0.6.1.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. MPCAccountManager | 3/6 | In Progress|  |
+| 10. MPCAccountManager | 4/6 | In Progress|  |
