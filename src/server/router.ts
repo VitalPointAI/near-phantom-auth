@@ -18,6 +18,7 @@ import type { DatabaseAdapter, CodenameConfig, RateLimitConfig, CsrfConfig, Anon
 import pino from 'pino';
 import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
+import { deriveBackupEligibility } from './backup.js';
 import { validateBody } from './validation/validateBody.js';
 import {
   registerStartBodySchema,
@@ -238,6 +239,10 @@ export function createRouter(config: RouterConfig): Router {
         success: true,
         codename: user.codename,
         nearAccountId: user.nearAccountId,
+        passkey: {
+          backedUp: passkeyData.backedUp,
+          backupEligible: deriveBackupEligibility(passkeyData.deviceType),
+        },
       });
     } catch (error) {
       log.error({ err: error }, 'Registration finish error');
