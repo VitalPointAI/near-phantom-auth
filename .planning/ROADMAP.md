@@ -76,13 +76,13 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. A consumer importing the standalone `verifyRegistration()` from `/server` sees `credential.backupEligible` (computed `deviceType === 'multiDevice'`) on the result, with JSDoc documenting the BE/BS lifecycle.
   4. A React consumer using `useAnonAuth` reads `passkeyBackedUp` and `passkeyBackupEligible` (both `boolean | null`) from `AnonAuthState` after `register()` or `login()` resolves.
   5. A consumer who passes `hooks: {}` (or omits the field) to `createAnonAuth` sees behavior byte-identical to v0.6.1 — `AnonAuthConfig.hooks` is fully optional and absent hooks short-circuit.
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 - [x] 11-01-PLAN.md — BACKUP-05 helper + types: deriveBackupEligibility helper, unit tests, RegistrationFinishResponse/AuthenticationFinishResponse passkey? extension
 - [x] 11-02-PLAN.md — HOOK-01 scaffolding: AnonAuthHooks type, AnonAuthConfig.hooks?, threading through createRouter + createOAuthRouter, Wave 0 hooks-scaffolding test (compile fixtures + grep guard)
 - [x] 11-03-PLAN.md — BACKUP-03 standalone webauthn surface: verifyRegistration() result.credential.backupEligible + BE/BS JSDoc
 - [x] 11-04-PLAN.md — BACKUP-01 register response: /register/finish passkey: { backedUp, backupEligible } + supertest
 - [x] 11-05-PLAN.md — BACKUP-02 login response + DB persistence: passkey.ts:finishAuthentication FRESH read + optional updatePasskeyBackedUp adapter, /login/finish response, BS-bit-flip-on-login test
-- [ ] 11-06-PLAN.md — BACKUP-04 React state: useAnonAuth AnonAuthState gains passkeyBackedUp + passkeyBackupEligible (boolean | null)
+- [x] 11-06-PLAN.md — BACKUP-04 React state: useAnonAuth AnonAuthState gains passkeyBackedUp + passkeyBackupEligible (boolean | null)
 
 ### Phase 12: Multi-RP_ID Verification
 **Milestone:** v0.7.0
@@ -161,7 +161,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 8. Wire OAuth Callback DB State | v0.5.x | 1/1 | Complete | 2026-03-15 |
 | 9. WebAuthn PRF Extension | v0.6.0 | 3/3 | Complete | 2026-03-15 |
 | 10. MPCAccountManager | v0.6.1 | 6/6 | Complete | 2026-04-29 |
-| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 4/6 | In Progress|  |
+| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete   | 2026-04-29 |
 | 12. Multi-RP_ID Verification | v0.7.0 | 0/TBD | Not started | - |
 | 13. Registration Analytics Hook | v0.7.0 | 0/TBD | Not started | - |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |

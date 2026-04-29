@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: executing
-stopped_at: "Completed 11-05-PLAN.md: BACKUP-02 login-finish BS-bit-flip + passkey response"
-last_updated: "2026-04-29T20:24:00Z"
+status: verifying
+stopped_at: "Completed 11-06-PLAN.md: BACKUP-04 AnonAuthState passkeyBackedUp + passkeyBackupEligible"
+last_updated: "2026-04-29T20:42:41.032Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
-  percent: 83
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 Phase: 11 (backup-eligibility-flags-hooks-scaffolding) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-29
 
 ## Performance Metrics
@@ -60,6 +60,7 @@ Last activity: 2026-04-29
 | Phase 11 P03 | 5min | 1 tasks | 1 files |
 | Phase 11 P04 | 9min | 2 tasks | 2 files |
 | Phase 11 P05 | 8min | 3 tasks | 6 files |
+| Phase 11 P06 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Init]: pino externalized in tsup.config.ts (Phase 3-01) — consumers provide their own pino instance
 - [Phase 11]: backupEligible placed between backedUp and transports in verifyRegistration() credential shape — semantic adjacency, existing field order preserved — Mirrors plan spec for BACKUP-03; field-level JSDoc on each of deviceType/backedUp/backupEligible chosen over function-level only (Pitfall 7 defense at call-site)
 - [Phase ?]: passkey field appended at END of /register/finish literal per Pattern S4 (additive, no reorder)
+- [Phase ?]: BACKUP-04: AnonAuthState passkeyBackedUp/passkeyBackupEligible populated from result.passkey on register/login finish — no /session round-trip needed
 
 ### Roadmap Evolution
 
@@ -140,6 +142,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-29T20:24:00Z
-Stopped at: Completed 11-05-PLAN.md: BACKUP-02 login-finish BS-bit-flip + passkey response
+Last session: 2026-04-29T20:42:41.028Z
+Stopped at: Completed 11-06-PLAN.md: BACKUP-04 AnonAuthState passkeyBackedUp + passkeyBackupEligible
 Resume file: None
