@@ -91,10 +91,16 @@ export interface VerifyRegistrationInput {
   response: RegistrationResponseJSON;
   /** The challenge that was sent to client */
   expectedChallenge: string;
-  /** Expected origin (e.g., 'https://example.com') */
-  expectedOrigin: string;
-  /** Expected RP ID (e.g., 'example.com') */
-  expectedRPID: string;
+  /** Expected origin (e.g., 'https://example.com'). v0.7.0 (RPID-04): pass an
+   *  array of strings to accept assertions from related domains. The library
+   *  validates origin membership via Array.includes; pair-with-rpID enforcement
+   *  is the caller's responsibility (see README "Cross-Domain Passkeys"). */
+  expectedOrigin: string | string[];
+  /** Expected RP ID (e.g., 'example.com'). v0.7.0 (RPID-04): pass an array for
+   *  cross-domain passkey support; pair the array elements 1:1 with
+   *  `expectedOrigin` by index — `@simplewebauthn/server` does NOT cross-check
+   *  pairing. */
+  expectedRPID: string | string[];
 }
 
 export interface VerifyRegistrationResult {
@@ -161,10 +167,12 @@ export interface VerifyAuthenticationInput {
   response: AuthenticationResponseJSON;
   /** The challenge that was sent to client */
   expectedChallenge: string;
-  /** Expected origin (e.g., 'https://example.com') */
-  expectedOrigin: string;
-  /** Expected RP ID (e.g., 'example.com') */
-  expectedRPID: string;
+  /** Expected origin (e.g., 'https://example.com'). v0.7.0 (RPID-04): see
+   *  VerifyRegistrationInput.expectedOrigin for the array form contract. */
+  expectedOrigin: string | string[];
+  /** Expected RP ID (e.g., 'example.com'). v0.7.0 (RPID-04): see
+   *  VerifyRegistrationInput.expectedRPID for the array form contract. */
+  expectedRPID: string | string[];
   /** The stored credential for this user */
   credential: StoredCredential;
 }
