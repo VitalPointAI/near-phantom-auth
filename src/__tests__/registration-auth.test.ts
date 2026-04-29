@@ -295,6 +295,65 @@ describe('Registration flow', () => {
 
     expect(res.body).toHaveProperty('error');
   });
+
+  it('BACKUP-01: /register/finish response includes passkey: { backedUp, backupEligible } for multiDevice', async () => {
+    mockPasskeyManager.finishRegistration.mockResolvedValueOnce({
+      verified: true,
+      passkeyData: {
+        credentialId: 'cred-backup-md',
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        deviceType: 'multiDevice',
+        backedUp: true,
+      },
+      tempUserId: 'temp-user-bm',
+    });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/register/finish')
+      .send({
+        challengeId: 'chal-backup-md',
+        response: validRegistrationResponse,
+        tempUserId: 'temp-user-bm',
+        codename: 'ALPHA-BRAVO-7',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      success: true,
+      codename: expect.any(String),
+      nearAccountId: expect.any(String),
+      passkey: { backedUp: true, backupEligible: true },
+    });
+  });
+
+  it('BACKUP-01: /register/finish response reports backupEligible:false for singleDevice', async () => {
+    mockPasskeyManager.finishRegistration.mockResolvedValueOnce({
+      verified: true,
+      passkeyData: {
+        credentialId: 'cred-backup-sd',
+        publicKey: new Uint8Array(32),
+        counter: 0,
+        deviceType: 'singleDevice',
+        backedUp: false,
+      },
+      tempUserId: 'temp-user-bs',
+    });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/register/finish')
+      .send({
+        challengeId: 'chal-backup-sd',
+        response: validRegistrationResponse,
+        tempUserId: 'temp-user-bs',
+        codename: 'CHARLIE-DELTA-9',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.passkey).toEqual({ backedUp: false, backupEligible: false });
+  });
 });
 
 describe('Authentication flow', () => {
