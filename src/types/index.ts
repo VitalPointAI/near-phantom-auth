@@ -31,6 +31,34 @@ export interface CsrfConfig {
 }
 
 // ============================================
+// Hooks
+// ============================================
+
+/**
+ * Optional consumer-facing hooks for extending auth lifecycle behavior.
+ *
+ * All callbacks are OPTIONAL. A consumer who passes `hooks: {}` (or omits
+ * the field entirely) sees behavior byte-identical to v0.6.1.
+ *
+ * Phase 11 lands the type contract and threads hooks through factory functions;
+ * call sites are installed in subsequent phases:
+ *   - `afterAuthSuccess` — Phase 14 (HOOK-02..06): fires inside /register/finish,
+ *     /login/finish, OAuth callback after auth succeeds, before session creation.
+ *   - `backfillKeyBundle` — Phase 15 (BACKFILL-01..04): fires inside /login/finish
+ *     when sealingKeyHex was supplied; pass-through (consumer owns schema).
+ *   - `onAuthEvent` — Phase 13 (ANALYTICS-01..06): fire-and-forget at lifecycle
+ *     boundaries; type-level PII whitelist enforced via tsc-fail fixture.
+ */
+export interface AnonAuthHooks {
+  /** Phase 14 — fires inside /register/finish, /login/finish, OAuth callback. */
+  afterAuthSuccess?: (ctx: unknown) => Promise<unknown>;
+  /** Phase 15 — fires inside /login/finish when sealingKeyHex was supplied. */
+  backfillKeyBundle?: (ctx: unknown) => Promise<unknown>;
+  /** Phase 13 — fires fire-and-forget at lifecycle boundaries. */
+  onAuthEvent?: (event: unknown) => void | Promise<void>;
+}
+
+// ============================================
 // Configuration
 // ============================================
 
@@ -126,6 +154,11 @@ export interface AnonAuthConfig {
     /** Verified sender email address or domain identity in SES */
     fromAddress: string;
   };
+
+  /** Optional consumer hooks (v0.7.0). All callbacks optional;
+   *  absent or `hooks: {}` → behavior identical to v0.6.1.
+   *  Phase 11 lands the type; call sites wired in Phases 13–15. */
+  hooks?: AnonAuthHooks;
 }
 
 export interface MPCAccountConfig {
