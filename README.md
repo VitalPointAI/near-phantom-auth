@@ -88,6 +88,106 @@ When the authenticator does not return a PRF result, `sealingKeyHex` is omitted 
 
 Users who registered before v0.6.0 do not have a DEK provisioned server-side — their account records have a NULL key bundle (`users.mlkem_ek IS NULL`). Once the auth-service is patched so that `provisionUserKeys()` fires whenever `getUserKeyBundle(userId)` returns `null` on login (not only for brand-new `isNewUser` registrations), these accounts auto-bootstrap on next successful login. No client-side migration is required: starting at v0.6.0 the library ships `sealingKeyHex` on every login for PRF-capable authenticators, and the server decides — based on the presence of an existing key bundle — whether to provision a new DEK or unwrap the existing one.
 
+## Cross-Domain Passkeys (v0.7.0)
+
+`near-phantom-auth@0.7.0` adds optional support for the WebAuthn [Related Origin
+Requests](https://passkeys.dev/docs/advanced/related-origins/) feature, letting
+a single deployment accept passkey assertions from multiple registrable domains
+(e.g. `shopping.com` + `shopping.co.uk` + `shopping.de`).
+
+### What the library does
+
+When `rp.relatedOrigins` is configured at `createAnonAuth()` startup, the library:
+
+1. **Validates** each entry's shape, scheme (https only, http://localhost permitted
+   only when `rpId === 'localhost'`), wildcard absence, and suffix-domain pairing
+   at startup. Misconfiguration throws with a classified message — no silent
+   acceptance into production.
+2. **Spreads** the validated paired tuples into `expectedOrigin` and
+   `expectedRPID` on every `verifyRegistrationResponse` /
+   `verifyAuthenticationResponse` call, preserving pairing by tuple order.
+3. **Caps** the list at 5 entries (browser support has a 5-label minimum;
+   additional entries are silently ignored by Chrome/Safari).
+
+### What the consumer must do
+
+**The library does NOT auto-host `/.well-known/webauthn`.** Hosting is a
+per-deployment concern — the library cannot see your hosting topology.
+
+Serve a JSON document at `https://{primaryRpId}/.well-known/webauthn` with
+`Content-Type: application/json` listing the related origins. Skeleton:
+
+```json
+{
+  "origins": [
+    "https://shopping.co.uk",
+    "https://shopping.ie",
+    "https://shopping.ca"
+  ]
+}
+```
+
+Hosting requirements (per [passkeys.dev/docs/advanced/related-origins/](https://passkeys.dev/docs/advanced/related-origins/)):
+
+- URL: `https://{primaryRpId}/.well-known/webauthn` (not the related domain)
+- `Content-Type: application/json`
+- HTTPS only — browsers will not fetch over plain HTTP for non-localhost rpIds
+- The primary RP ID itself MUST NOT be in the array — it's implicit
+- Maximum 5 unique eTLD+1 labels — entries beyond the cap are silently ignored
+- No wildcards in the array
+
+Use your existing static-asset pipeline (Next.js `public/`, Vercel/Cloudflare
+static assets, S3+CloudFront, etc.) — the library does not own request routing
+for `/.well-known/*` paths.
+
+### Browser support
+
+Cross-domain passkey support shipped in Chrome 128 (Aug 2024) and Safari 18
+(Sep 2024). Firefox users see `SecurityError` on registrations that span
+domains; the recommended graceful degradation is for Firefox users to
+register a separate passkey per domain.
+
+### Server-side configuration
+
+Pass `rp.relatedOrigins` to `createAnonAuth()` as an array of paired tuples
+(NOT two parallel arrays — see [security note](#security-paired-tuple-vs-parallel-arrays)
+below):
+
+```typescript
+import { createAnonAuth } from '@vitalpoint/near-phantom-auth/server';
+
+const auth = createAnonAuth({
+  // ... other config ...
+  rp: {
+    name: 'My App',
+    id: 'shopping.com',
+    origin: 'https://shopping.com',
+    relatedOrigins: [
+      { origin: 'https://shopping.co.uk', rpId: 'shopping.co.uk' },
+      { origin: 'https://shopping.ie',    rpId: 'shopping.ie' },
+    ],
+  },
+});
+```
+
+### Security: paired tuple vs parallel arrays
+
+The library uses an `Array<{ origin, rpId }>` paired-tuple shape — NOT two
+parallel arrays — because `@simplewebauthn/server` does not cross-check
+origin↔rpId pairing. It tests independent membership of each list. If your
+config drifted (e.g. via a `.map()` reorder of one array), the library would
+accept assertions where `originA` was signed under `rpIdB`, even though that
+combination has no allowlist relationship.
+
+The paired-tuple shape makes pairing intent **structural** — it cannot be
+silently broken by a refactor because the array IS the list of pairs.
+
+### References
+
+- [passkeys.dev — Related Origin Requests](https://passkeys.dev/docs/advanced/related-origins/)
+- [web.dev — WebAuthn Related Origin Requests](https://web.dev/articles/webauthn-related-origin-requests)
+- [W3C WebAuthn Level 3 §5.10.3](https://www.w3.org/TR/webauthn-3/) — Related Origin Requests algorithm
+
 ## Installation
 
 ```bash
@@ -443,6 +543,13 @@ const auth = createAnonAuth({
     name: 'My App',
     id: 'myapp.com',
     origin: 'https://myapp.com',
+    // Optional v0.7.0 (RPID-01): cross-domain passkey support via WebAuthn
+    // Related Origin Requests. Paired tuples — NOT two parallel arrays.
+    // Max 5 entries. See "Cross-Domain Passkeys (v0.7.0)" below.
+    // relatedOrigins: [
+    //   { origin: 'https://myapp.co.uk', rpId: 'myapp.co.uk' },
+    //   { origin: 'https://myapp.de',    rpId: 'myapp.de' },
+    // ],
   },
 
   // === Privacy (recommended for production) ===
