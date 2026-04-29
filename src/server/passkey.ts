@@ -31,6 +31,7 @@ import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
   AuthenticatorTransport,
+  RelatedOrigin,                  // Phase 12 RPID-01
 } from '../types/index.js';
 
 export interface PasskeyConfig {
@@ -40,6 +41,13 @@ export interface PasskeyConfig {
   rpId: string;
   /** Origin for WebAuthn (e.g., 'https://example.com') */
   origin: string;
+  /** Phase 12 RPID-01 — already-validated paired tuples threaded from
+   *  createAnonAuth. REQUIRED (factory passes [] when consumer omits
+   *  rp.relatedOrigins). The validator runs upstream (src/server/index.ts
+   *  startup); this field is never re-validated here. Spread by tuple
+   *  ORDER into expectedOrigin / expectedRPID at the verify call sites
+   *  — no intermediate `.filter()` / `.sort()` permitted (Pitfall 1). */
+  relatedOrigins: readonly RelatedOrigin[];
   /** Challenge timeout in ms (default: 60000) */
   challengeTimeoutMs?: number;
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
@@ -172,8 +180,12 @@ export function createPasskeyManager(
         verification = await verifyRegistrationResponse({
           response: response as unknown as Parameters<typeof verifyRegistrationResponse>[0]['response'],
           expectedChallenge: challenge.challenge,
-          expectedOrigin: config.origin,
-          expectedRPID: config.rpId,
+          expectedOrigin: config.relatedOrigins.length === 0
+            ? config.origin
+            : [config.origin, ...config.relatedOrigins.map(r => r.origin)],
+          expectedRPID: config.relatedOrigins.length === 0
+            ? config.rpId
+            : [config.rpId, ...config.relatedOrigins.map(r => r.rpId)],
         } as VerifyRegistrationResponseOpts);
       } catch (error) {
         log.error({ err: error }, 'Registration verification failed');
@@ -279,8 +291,12 @@ export function createPasskeyManager(
         verification = await verifyAuthenticationResponse({
           response: response as unknown as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
           expectedChallenge: challenge.challenge,
-          expectedOrigin: config.origin,
-          expectedRPID: config.rpId,
+          expectedOrigin: config.relatedOrigins.length === 0
+            ? config.origin
+            : [config.origin, ...config.relatedOrigins.map(r => r.origin)],
+          expectedRPID: config.relatedOrigins.length === 0
+            ? config.rpId
+            : [config.rpId, ...config.relatedOrigins.map(r => r.rpId)],
           credential: {
             id: passkey.credentialId,
             publicKey: passkey.publicKey,
