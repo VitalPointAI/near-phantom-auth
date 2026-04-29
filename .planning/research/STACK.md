@@ -1,315 +1,300 @@
-# Technology Stack — Hardening Dependencies
+# Stack Research — v0.7.0 Consumer Hooks & Recovery Hardening
 
-**Project:** near-phantom-auth (hardening pass)
-**Researched:** 2026-03-14
-**Scope:** New dependencies required for security hardening, testing, and email delivery. Does not re-document the existing stack (see `.planning/codebase/STACK.md`).
+**Domain:** Authentication SDK addition (npm library: `@vitalpoint/near-phantom-auth`)
+**Researched:** 2026-04-29
+**Confidence:** HIGH
 
----
-
-## Hardening Additions — Recommended Stack
-
-### Runtime Validation
-
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `zod` | `^3.23.x` | Schema-based runtime validation of all `req.body` inputs | TypeScript-native; schemas produce inferred types, eliminating the dual-maintenance problem of a separate TS interface + a runtime check. Smaller bundle than `joi`. No runtime deps. The project already names it in `PROJECT.md` constraints. MEDIUM confidence on exact version — verify with `npm view zod version` before pinning. |
-
-**Confidence:** MEDIUM — version from training data (August 2025 cutoff). Zod 3.x is the stable series. Zod 4 was in development pre-cutoff but not stable; do not use `^4.x` without explicit verification.
-
-**NOT zod 4.x:** Pre-release as of knowledge cutoff. Breaking API changes; wait for stable release.
-**NOT joi:** Heavier, no native TypeScript inference, does not emit TS types from schema.
-**NOT yup:** Less popular in the Node/Express server-side space; fewer ecosystem integrations.
-
-**Usage pattern — validate at route entry, type flows down:**
-```typescript
-import { z } from 'zod';
-
-const RegisterStartSchema = z.object({
-  username: z.string().min(1).max(64),
-});
-
-// In route handler:
-const result = RegisterStartSchema.safeParse(req.body);
-if (!result.success) {
-  return res.status(400).json({ error: 'Invalid input', issues: result.error.issues });
-}
-const { username } = result.data; // fully typed
-```
+**Headline:** **Zero new dependencies. Zero version bumps required.** v0.7.0 maintains the project's track record of additive feature work without dependency churn (consistent with v0.5.x, v0.6.0, v0.6.1). One *optional* patch bump (`@simplewebauthn/server` 13.2.3 → 13.3.0) is available if better punycode error messages are wanted, but not required for any of the 5 features.
 
 ---
 
-### Rate Limiting
+## TL;DR Per Feature
 
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `express-rate-limit` | `^7.x` | Per-IP rate limiting on auth and recovery endpoints | The de-facto standard for Express rate limiting. Zero non-Express runtime deps. Configurable store (in-memory default; swap to Redis store for multi-instance). Project constraints name it explicitly. MEDIUM confidence on version. |
-
-**Confidence:** MEDIUM — version from training data. `express-rate-limit` v7 is the current major as of mid-2025.
-
-**NOT `rate-limiter-flexible`:** More powerful but significantly more complex; overkill for this library's usage pattern. Appropriate if Redis/distributed limiting is added later.
-**NOT `express-slow-down`:** A companion library for graduated slowdown, not a replacement. Can be added alongside `express-rate-limit` as a secondary defense if desired.
-
-**Usage pattern — tiered limits by endpoint sensitivity:**
-```typescript
-import rateLimit from 'express-rate-limit';
-
-// Standard auth endpoints: 10 attempts per 15 minutes per IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Recovery endpoints: tighter — 5 per hour
-const recoveryLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-```
-
-**Note on multi-instance deployments:** The default in-memory store loses counts on restart and does not share across processes. The library exposes a `store` option. If consumers run multiple Node processes, document that they should provide a `rate-limit-redis` store. Do not add Redis as a hard dependency — keep it as a documented integration option.
+| # | Feature | New Dep? | Version Bump? | Lib Sufficiency |
+|---|---------|----------|---------------|-----------------|
+| 1 | Backup-eligibility flag exposure | No | No | `backedUp` already returned by `@simplewebauthn/server` (`registrationInfo.credentialBackedUp`); already passed through `passkey.ts` line 197 — pure plumbing fix. |
+| 2 | Second-factor enrolment hook | No | No | Pure config callback; no library does this for us. Use `AnonAuthConfig` extension. |
+| 3 | Lazy-backfill hook | No | No | Pure config callback; existing `db.getPasskeyById` + `db.updatePasskey*` cover persistence. |
+| 4 | Multi-RP_ID verification | No | **No** | `@simplewebauthn/server@^13.2.3` (currently pinned) **already accepts `string \| string[]` for `expectedRPID` and `expectedOrigin`** — feature has shipped since v1.0.0. We just stop hard-coding scalars. |
+| 5 | Registration analytics hook | No | No | Pure config callback. Hash op via Node built-in `crypto.createHash('sha256')` — no lib needed. |
 
 ---
 
-### Structured Logging
+## Recommended Stack (v0.7.0)
 
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `pino` | `^9.x` | Structured JSON logging with log levels and field redaction | Fastest JSON logger for Node.js (JSON.stringify throughput benchmarks consistently favor pino over winston, bunyan). First-class log level support. Built-in `redact` option for sensitive field paths — critical for this codebase which currently logs treasury keys and account IDs to console. MEDIUM confidence on version. |
+### Core Technologies — Already Pinned, Sufficient
 
-**Confidence:** MEDIUM — version from training data. Pino 9 is the current major as of mid-2025. API is stable; v8→v9 had only minor breaking changes.
+| Technology | Pinned Version | Purpose for v0.7.0 | Why No Change |
+|------------|---------------|---------------------|---------------|
+| `@simplewebauthn/server` | `^13.2.3` | Multi-RP_ID via `expectedRPID: string[]` | API has accepted `string \| string[]` since v1.0.0; verified against current master `verifyAuthenticationResponse.ts` and v13 docs. Latest is v13.3.0 (2025-03-10) — patch bump only, no API changes. |
+| `zod` | `^4.3.6` | Validate consumer-supplied hook return shapes (e.g., second-factor enrolment result) | Already the project's runtime validator (Phase 2). Hook input/output types described as zod schemas keeps the hardening pattern consistent. |
+| `pino` | `^10.3.1` | Log hook invocations + analytics callback errors with redaction | Already wired with redact paths (Phase 3 + MPC-09). Consumer-supplied callbacks should be `try/catch`ed and logged via the project's logger — no separate hook-error library needed. |
+| Node built-in `crypto` | n/a (Node ≥ 18 required) | SHA-256 hash of codename for the analytics hook (if consumer opts in to a hashed identifier) | `crypto.createHash('sha256').update(codename).digest('hex')` — built-in, no dependency. Avoids adding `bcrypt`/`argon2` (overkill for non-secret hashing). |
 
-**NOT winston:** Slower, more complex configuration, no built-in field redaction. Widely used but pino is the correct choice for a performance-sensitive library.
-**NOT bunyan:** Effectively unmaintained. Do not use.
-**NOT console.log:** Zero log levels, no redaction, cannot be silenced in production, no structured output.
+### Supporting Libraries — Not Needed
 
-**Usage pattern — library-safe logger factory:**
-```typescript
-import pino from 'pino';
+| Library | Why Considered | Why Rejected |
+|---------|---------------|--------------|
+| `@simplewebauthn/server@^14.x` | Future major release | **Does not exist as of 2026-04-29.** Latest is v13.3.0 (2025-03-10). Multi-RP_ID is in v13.2.3 already. Speculative. |
+| `bcrypt` / `argon2` | Hashing the codename in the analytics hook | Codename is not a secret, hashing here is for cross-event correlation only — SHA-256 is fast, deterministic, dependency-free. Adding native bindings would break tsup's pure-JS dist guarantee. |
+| `eventemitter3` / `mitt` | Event-bus for hooks (registration, login, backfill, 2FA) | The 5 hooks are a small, fixed set. A typed `AnonAuthConfig.hooks` object with optional callbacks is simpler, type-safer, and avoids runtime registration order issues. No dependency justified. |
+| `rxjs` / observable libs | Reactive analytics pipeline | Same reason — out of scope. Consumer's analytics tool (Segment, Posthog, etc.) handles streaming; we just hand them an event object once. |
+| `tsyringe` / DI containers | Wiring hooks into the manager graph | The project already does manual DI via `createAnonAuth()` factory. Fine for 5 hooks. |
+| `ulid` / `uuid` (different) | Event correlation IDs in the analytics hook | `crypto.randomUUID()` (Node ≥ 18 built-in, already used in `passkey.ts:122`) is sufficient. |
 
-// Library creates a child logger — consumers can pass their own parent logger
-export function createLogger(options: { level?: string; redact?: string[] } = {}) {
-  return pino({
-    level: options.level ?? (process.env.NODE_ENV === 'production' ? 'warn' : 'info'),
-    redact: {
-      paths: [
-        'publicKey',
-        'treasuryKey',
-        'derivationPath',
-        'password',
-        'sessionId',
-        ...(options.redact ?? []),
-      ],
-      censor: '[REDACTED]',
-    },
-  });
-}
-```
+### Development Tools — No Change
 
-**Library packaging note:** pino is a runtime dependency (`dependencies`), not `devDependencies`, because the server entry point uses it at runtime. However, expose a `logger` option in `AnonAuthConfig` so consuming applications can inject their own pino instance — this avoids duplicate pino instances and lets consumers route logs through their existing infrastructure.
+| Tool | Pinned Version | Notes |
+|------|---------------|-------|
+| `tsup` | `^8.5.1` | Already externalises `pino`, `express`, `react`. **No new externals** since no new deps. Existing `tsup.config.ts` continues to produce 4 entry points × 2 formats = 8 outputs. |
+| `vitest` | `^4.0.18` | Existing 280-test suite extends with hook-invocation specs. No new test runner. |
+| `typescript` | `^5.9.3` | Strict mode stays disabled (per `PROJECT.md` constraint). New hook callback types use existing patterns. |
+| `@types/express` | `^5.0.6` | Already covers `Request` augmentation if any hook needs `req` access. |
 
 ---
 
-### Constant-Time Comparison
-
-| Approach | Source | Why |
-|----------|--------|-----|
-| `crypto.timingSafeEqual` (Node.js built-in) | Node.js `crypto` module, no npm install | The correct fix for the timing side-channel in `session.ts` line 68. Already available in Node.js >= 15. No new dependency needed. |
-
-**Confidence:** HIGH — Node.js built-in, documented API, no version uncertainty.
-
-**NOT a third-party `safe-compare` or `secure-compare` package:** Node.js provides `crypto.timingSafeEqual` natively. Adding a wrapper npm package for something this simple increases supply-chain attack surface for no benefit.
-
-**Fix pattern for `session.ts`:**
-```typescript
-import { timingSafeEqual } from 'crypto';
-
-// Replace:
-if (signature !== expectedSignature) { ... }
-
-// With:
-const sigBuf = Buffer.from(signature, 'utf8');
-const expBuf = Buffer.from(expectedSignature, 'utf8');
-if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-  // reject
-}
-```
-
-Note: `timingSafeEqual` requires equal-length buffers. Always check length first — a length mismatch is itself a safe early rejection (the lengths of HMAC outputs are constant, so length varies only on malformed input, which can be rejected without timing concerns).
-
----
-
-### CSRF Protection
-
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `csrf-csrf` | `^3.x` | Double-submit CSRF token pattern for Express | Implements the double-submit cookie pattern (recommended by OWASP). Works correctly with `SameSite=strict` as defense-in-depth, and is required when `SameSite=lax` or `none` is configured. Actively maintained. Integrates cleanly with Express cookie-based sessions. MEDIUM confidence on version. |
-
-**Confidence:** MEDIUM — version from training data. `csrf-csrf` is the current recommended package post-deprecation of the older `csurf` package.
-
-**NOT `csurf`:** Deprecated and removed from npm. Do not use — it has known vulnerabilities and is no longer maintained.
-**NOT custom token implementation:** Implementing CSRF token generation and validation manually introduces error risk on a security-sensitive feature.
-
-**Important scoping note:** CSRF protection should be applied only to state-changing endpoints (`POST`, `PATCH`, `DELETE`). The library should expose a `csrfMiddleware` factory that consuming applications mount. Do not force CSRF on all routes — GET requests should remain unprotected per CSRF best practices, and WebAuthn flows have their own challenge-based protection.
-
-**Configuration guidance:**
-```typescript
-import { doubleCsrf } from 'csrf-csrf';
-
-const { generateToken, doubleCsrfProtection } = doubleCsrf({
-  getSecret: () => process.env.CSRF_SECRET!,
-  cookieName: '__Host-csrf',
-  cookieOptions: {
-    sameSite: 'strict',
-    secure: true,
-    httpOnly: true,
-  },
-});
-```
-
----
-
-### AWS SES Email Delivery
-
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `@aws-sdk/client-ses` | `^3.x` | Send transactional email via AWS SES | AWS SDK v3 (modular) is the current standard. The `client-ses` module is the minimal SES-only package — do not install the monolithic `aws-sdk` v2. V3 is fully tree-shakeable, supports ESM natively, and is the AWS-recommended approach. MEDIUM confidence on exact minor version. |
-
-**Confidence:** MEDIUM — AWS SDK v3 is well-established; the modular package pattern is stable. Minor version moves frequently; pin to `^3.x` and let npm resolve.
-
-**NOT `aws-sdk` (v2):** Deprecated. AWS has stated v2 will only receive critical security patches. V3 is the migration target.
-**NOT `nodemailer` with SES transport:** Adds an unnecessary abstraction layer. Direct `@aws-sdk/client-ses` is simpler for a library that only sends one type of email (recovery password delivery).
-**NOT SendGrid/Mailgun/Postmark SDKs:** Project constraints specify AWS SES. These are alternatives only if the user changes their mind.
-
-**Usage pattern:**
-```typescript
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
-
-const sesClient = new SESClient({ region: process.env.AWS_REGION ?? 'us-east-1' });
-
-export async function sendRecoveryEmail(to: string, recoveryPassword: string): Promise<void> {
-  const command = new SendEmailCommand({
-    Source: process.env.SES_FROM_ADDRESS!,
-    Destination: { ToAddresses: [to] },
-    Message: {
-      Subject: { Data: 'Your account recovery password' },
-      Body: {
-        Text: { Data: `Your recovery password is: ${recoveryPassword}\n\nStore this securely.` },
-      },
-    },
-  });
-  await sesClient.send(command);
-}
-```
-
-**Packaging note:** `@aws-sdk/client-ses` must be listed in `dependencies` (not `devDependencies`) since it is called at runtime. However, it should be guarded behind a check — if no SES config is provided, skip email delivery gracefully rather than throwing at startup. Email delivery is optional infrastructure; the library should not hard-fail if SES credentials are absent.
-
----
-
-### Testing — No New Framework Needed
-
-| Decision | Rationale |
-|----------|-----------|
-| Vitest (already installed at `^4.0.18`) | Do not add Jest. The project already has Vitest configured. Writing tests is the task; the framework is already present. |
-
-**Confidence:** HIGH — confirmed from existing `package.json`.
-
-The existing `vitest` devDependency at `^4.0.18` is sufficient for all required test types:
-
-- **Unit tests** (session, passkey, MPC, codename): `vitest` with `vi.mock()` for module mocking
-- **Crypto mocking**: `vi.spyOn(crypto, 'timingSafeEqual')` etc.
-- **Integration tests**: Vitest supports async/await natively; use `supertest` for HTTP-level testing
-
-| Library | Version | Purpose | Why |
-|---------|---------|---------|-----|
-| `supertest` | `^7.x` | HTTP integration testing for Express routes | The standard for testing Express apps without starting a real server. Works with Vitest via `describe/it`. No alternative is as well-adopted for Express. MEDIUM confidence on version. |
-| `@types/supertest` | `^6.x` | TypeScript types for supertest | Dev dependency companion. |
-
-**NOT `@vitest/browser`:** Not needed — server-side library, no DOM testing required.
-**NOT Playwright/Cypress:** E2E browser testing is out of scope for a server-side library.
-
----
-
-## Dependency Classification
-
-| Library | Type | Rationale |
-|---------|------|-----------|
-| `zod` | `dependencies` | Used at runtime to validate request bodies in Express middleware |
-| `express-rate-limit` | `dependencies` | Runtime Express middleware |
-| `pino` | `dependencies` | Runtime logging in all server-side code paths |
-| `@aws-sdk/client-ses` | `dependencies` | Runtime email delivery for OAuth recovery |
-| `csrf-csrf` | `dependencies` | Runtime Express middleware |
-| `supertest` | `devDependencies` | Test-only HTTP integration tool |
-| `@types/supertest` | `devDependencies` | Test-only types |
-| `crypto.timingSafeEqual` | Built-in | No install needed |
-
----
-
-## What NOT to Add
-
-| Package | Reason to Avoid |
-|---------|-----------------|
-| `helmet` | Useful for Express apps; but this is a library, not an app. Consumers should configure helmet themselves. Adding it here forces it on consumers who may already have their own security headers. |
-| `express-validator` | Redundant with zod. zod is strictly better for TypeScript projects. |
-| `jsonwebtoken` | Not needed — existing session system uses HMAC-signed cookies, not JWTs. Adding JWT would be a scope change. |
-| `bcrypt` / `argon2` | Not needed — no passwords stored (passkey auth). Recovery passwords are single-use random values, not user-chosen secrets that need hashing. |
-| `uuid` | Already available as `crypto.randomUUID()` in Node.js >= 14.17. Adding this package would be redundant. |
-| `dotenv` | Library, not app. Consumers manage their own environment. |
-| `ioredis` | Not needed for this milestone. Rate-limit Redis store is a consumer concern, documented as optional. |
-
----
-
-## Installation Commands
+## Installation
 
 ```bash
-# Runtime dependencies
-npm install zod express-rate-limit pino csrf-csrf @aws-sdk/client-ses
+# v0.7.0 install delta:
+# (none)
+```
 
-# Dev/test dependencies
-npm install -D supertest @types/supertest
+No `npm install` needed for v0.7.0 stack. The existing `package.json` dependencies are sufficient. **Optional** patch bump for upstream punycode improvements:
+
+```bash
+# Optional, NOT required for any v0.7.0 feature:
+npm install @simplewebauthn/server@^13.3.0
 ```
 
 ---
 
-## Version Confidence Summary
+## Per-Feature Stack Justification
 
-| Library | Version | Confidence | Notes |
-|---------|---------|------------|-------|
-| `zod` | `^3.23.x` | MEDIUM | Training data cutoff Aug 2025. Verify: `npm view zod version`. Do not use v4 until stable release confirmed. |
-| `express-rate-limit` | `^7.x` | MEDIUM | V7 stable as of mid-2025. Verify: `npm view express-rate-limit version`. |
-| `pino` | `^9.x` | MEDIUM | V9 current major as of mid-2025. Verify: `npm view pino version`. |
-| `csrf-csrf` | `^3.x` | MEDIUM | Training data. Verify: `npm view csrf-csrf version`. |
-| `@aws-sdk/client-ses` | `^3.x` | MEDIUM | V3 is the stable AWS SDK modular release; minor version changes frequently. |
-| `supertest` | `^7.x` | MEDIUM | Training data. Verify: `npm view supertest version`. |
-| `crypto.timingSafeEqual` | Node.js built-in | HIGH | Available since Node.js 15; project requires >= 18. No install. |
-| `vitest` | `^4.0.18` | HIGH | Confirmed in existing `package.json`. |
+### Feature 1 — Backup-eligibility flag exposure
 
-**Verification command (run before finalizing installs):**
-```bash
-npm view zod version && \
-npm view express-rate-limit version && \
-npm view pino version && \
-npm view csrf-csrf version && \
-npm view @aws-sdk/client-ses version && \
-npm view supertest version
+**Library involvement:** Already covered by current `@simplewebauthn/server@^13.2.3`. The `verifyRegistrationResponse()` returns `registrationInfo.credentialBackedUp: boolean` (verified in `src/server/passkey.ts:197` — value is already extracted and passed to `passkeyData.backedUp`). The `verifyAuthenticationResponse()` does not return this directly because backup state is per-credential and persisted at registration time; for `/login/finish`, the value comes from the stored `passkeys` row.
+
+**Code shape (no new deps):**
+```typescript
+// /register/finish → already has passkeyData.backedUp
+return res.json({ ..., backedUp: passkeyData.backedUp });
+
+// /login/finish → join the persisted row
+const stored = await db.getPasskeyById(response.id);
+return res.json({ ..., backedUp: stored.backedUp });
 ```
+
+**Schema check:** Confirm `passkeys.backed_up` column exists in the Postgres adapter (it does — added with credential persistence). No migration.
+
+**Confidence:** HIGH — verified by reading `webauthn.ts:259` and `passkey.ts:197`.
+
+---
+
+### Feature 2 — Second-factor enrolment hook
+
+**Library involvement:** None. This is a config-extension feature.
+
+**Stack pattern:**
+```typescript
+// New optional field on AnonAuthConfig
+interface AnonAuthConfig {
+  // ... existing fields
+  hooks?: {
+    afterPasskeyRegistration?: (ctx: {
+      userId: string;
+      codename: string;
+      backedUp: boolean;
+    }) => Promise<{ enrolled: boolean; reason?: string }>;
+  };
+}
+```
+
+The `/register/finish` route awaits the hook (if defined) before returning `{ verified: true }`. Hook errors are logged via existing `pino` logger and surface as 500 to the client (consumer's choice to throw or return `enrolled: false`).
+
+**Why no library:** The 2FA implementation lives in the consumer's app (Twilio for SMS, `otplib` for TOTP, etc.). Our job is to **expose the hook point**, not to implement 2FA. Adding a 2FA library here would force a choice on consumers and bloat the dist.
+
+**Validation:** Use `zod.object({ enrolled: z.boolean(), reason: z.string().optional() })` to validate the hook's return value at runtime — consistent with the Phase 2 input-validation pattern. No new dep (`zod` already pinned).
+
+---
+
+### Feature 3 — Lazy-backfill hook
+
+**Library involvement:** None. Same config-callback pattern as Feature 2.
+
+**Stack pattern:**
+```typescript
+interface AnonAuthConfig {
+  hooks?: {
+    backfillKeyBundle?: (ctx: {
+      userId: string;
+      codename: string;
+    }) => Promise<{
+      sealingKeyHex: string;       // PRF-derived, supplied by consumer or re-prompted via WebAuthn
+      encryptedBackup?: string;    // Optional — IPFS CID + encrypted blob
+    } | null>;
+  };
+}
+```
+
+Invoked from `/login/finish` when the persisted row has `NULL` for `sealing_key_wrapped` (or the legacy v0.5 `key_bundle` column). On success, the hook's result is persisted via existing `db.updatePasskey*` / `db.upsertKeyBundle` methods (already shipped in v0.6.0).
+
+**Why no library:** The backfill content is already produced by existing code paths (PRF extension on the client, AES-256-GCM via Node `crypto` — both already shipped). No new crypto, network, or storage primitive needed.
+
+**Database:** Schema already accommodates nullable `sealing_key_wrapped` (added in v0.6.0). No migration in v0.7.0 unless we add a `backfilled_at` audit column — defer to Requirements phase.
+
+---
+
+### Feature 4 — Multi-RP_ID verification
+
+**Library involvement:** **`@simplewebauthn/server@^13.2.3` (current pin) is sufficient.** Verified three ways:
+
+1. **Official docs** ([simplewebauthn.dev/docs/packages/server](https://simplewebauthn.dev/docs/packages/server)): "SimpleWebAuthn optionally supports verifying registrations from multiple origins and RP IDs! Simply pass in an **array** of possible origins and IDs for `expectedOrigin` and `expectedRPID` respectively."
+2. **Source code** ([master/verifyAuthenticationResponse.ts](https://github.com/MasterKale/SimpleWebAuthn/blob/master/packages/server/src/authentication/verifyAuthenticationResponse.ts)): Type signature is `expectedOrigin: string | string[]; expectedRPID: string | string[];`.
+3. **Changelog**: Multi-RPID/multi-origin support has been in the library since **v1.0.0** — predates our pin by years.
+
+**Code shape (no version bump):**
+```typescript
+// PasskeyConfig accepts array
+interface PasskeyConfig {
+  rpName: string;
+  rpId: string | string[];      // was: string
+  origin: string | string[];    // was: string
+  // ...
+}
+
+// Pass through to @simplewebauthn/server unchanged
+verifyAuthenticationResponse({
+  expectedRPID: config.rpId,
+  expectedOrigin: config.origin,
+  // ...
+});
+```
+
+**Knock-on:** The `generateRegistrationOptions` / `generateAuthenticationOptions` calls accept only a **single** `rpID` (you register a credential against one RP ID, you can verify against many). So `PasskeyConfig` needs both:
+- `rpId: string` (used for `generate*Options`) — call this `primaryRpId`
+- `acceptedRpIds: string[]` (used for `verify*Response`) — superset including `primaryRpId`
+
+This is a config-shape decision, not a dependency decision.
+
+**Hosting requirement (NOT a stack item, but flagged for PITFALLS):** Browsers (Chrome/Edge 128+, Safari 18+) require a `/.well-known/webauthn` JSON document at the primary RP ID's origin listing the related origins. The library does not host this — it's the consumer's responsibility. Roadmap should include README guidance + a helper function `buildWellKnownWebAuthnJson(origins: string[])` — pure function, no dep.
+
+**Optional bump rationale:** `@simplewebauthn/server@13.3.0` (2025-03-10) added punycode-aware error messages. Helpful if any consumer has IDN domains, but not required. Patch bump is safe.
+
+**Confidence:** HIGH — verified against three independent sources (docs, source, changelog) plus current master.
+
+---
+
+### Feature 5 — Registration analytics hook
+
+**Library involvement:** None.
+
+**Stack pattern:**
+```typescript
+interface AnonAuthConfig {
+  hooks?: {
+    onAuthEvent?: (event: {
+      type: 'register' | 'login' | 'backfill' | '2fa-enrolled';
+      timestamp: number;
+      codenameHash?: string;   // SHA-256(codename), only if consumer set hashCodename: true
+      backedUp?: boolean;
+      // EXPLICITLY ABSENT: codename, nearAccountId, userId, ipAddress, userAgent
+    }) => void | Promise<void>;
+  };
+}
+```
+
+**Hashing:** Node built-in `crypto.createHash('sha256').update(codename).digest('hex')` — no dep. Codename is not secret; SHA-256 is appropriate (collision-resistant, deterministic for cross-event linking, fast).
+
+**Why fire-and-forget by default:** Analytics must not block auth. Wrap the hook in `setImmediate(() => Promise.resolve(consumerHook(event)).catch(log.error))` or similar. Consumer that wants strict-ordering can return a Promise we await — opt-in via config flag.
+
+**Anti-PII guardrail:** The `event` object's TypeScript type is the contract. We `Object.freeze()` it before passing. Defensive: type-level `Exclude<keyof T, 'codename' | 'userId' | 'nearAccountId'>` enforced via a branded `AnalyticsEvent` type. Tests assert no PII fields are present in the runtime payload (string match against payload JSON).
+
+**No analytics-vendor libraries:** We do not import Segment, Posthog, Mixpanel, etc. The consumer's hook implementation calls those. Keeping us vendor-neutral is the whole point.
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Optional callback fields on `AnonAuthConfig.hooks` | Event emitter (`EventEmitter`/`mitt`) | If we expected dynamic registration of multiple subscribers per event. We don't — each consumer wires one handler at config time. Skip. |
+| `@simplewebauthn/server` array-form `expectedRPID` | Custom multi-pass verification (call `verifyAuthenticationResponse` once per RP ID) | Only if we wanted the assertion verified against fallback RP IDs in priority order with custom branching. Library handles it natively — no benefit to rolling our own. |
+| Node built-in `crypto.createHash('sha256')` for codename hashing | `bcrypt`, `argon2`, `scrypt` | Use a slow KDF only if the input were a secret needing brute-force resistance. Codename is not secret — it's a public anonymous identifier. Wrong tool. |
+| Synchronous hook contract with optional `await` | Background queue (BullMQ/Redis) | Only if analytics fan-out becomes hot enough to bottleneck auth. Not a v0.7.0 concern; consumer can offload from inside their hook. |
+| Stay on `@simplewebauthn/server@13.2.3` | Bump to `13.3.0` | Consumers operating IDN/punycode domains (rare). Patch bump is safe but not required. |
+
+---
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| Speculative `@simplewebauthn/server@^14.x` | Does not exist (latest is 13.3.0 as of 2026-04-29). Don't pre-bump for an unreleased major. | Stay on `^13.2.3`. |
+| `bcrypt` / `argon2` for codename hashing in analytics | Adds native bindings, breaks pure-JS dist, wrong primitive (codename is not a secret). | Node `crypto.createHash('sha256')`. |
+| 2FA libraries (`speakeasy`, `otplib`, `twilio`) bundled into this SDK | Forces a 2FA choice on consumers; bloats dist; breaks vendor neutrality (the whole point of the hook). | Hook-only — consumer brings their own 2FA stack. |
+| Analytics SDKs (`@segment/analytics-node`, `posthog-node`) bundled | Same reason — vendor neutrality. | Hook-only — consumer pipes events to their tool. |
+| Storing `codename` or `nearAccountId` on the analytics event | Violates the project-wide "anonymous" invariant; would leak PII to the consumer's analytics pipeline. | Hash codename (opt-in) or omit identity entirely. |
+| Adding a new logger | `pino` is already wired with redact paths. | Reuse `config.logger`. |
+
+---
+
+## Stack Patterns by Variant
+
+**If consumer uses single RP ID (the common case):**
+- `rp.id: 'myapp.com'` (string) — backwards compatible, no change required.
+- No `/.well-known/webauthn` needed.
+
+**If consumer uses multi RP ID (cross-subdomain passkeys):**
+- `rp.id: 'app.example.com'` (string — primary, used for credential creation)
+- `rp.acceptedIds: ['app.example.com', 'auth.example.com']` (array — used for verification)
+- Host `https://app.example.com/.well-known/webauthn` with `{ "origins": [...] }`
+- Browser support: Chrome/Edge 128+, Safari 18+. Firefox: positive standards position (March 2026), no shipping date.
+
+**If consumer wants fully-anonymous analytics:**
+- `hooks.onAuthEvent` receives `{ type, timestamp }` only. No identifier.
+
+**If consumer wants cross-event correlation without PII:**
+- `hooks.onAuthEvent` receives `{ type, timestamp, codenameHash }` (SHA-256 of codename). Hash is stable per-user but reveals nothing PII-adjacent.
+
+---
+
+## Version Compatibility
+
+| Package A | Compatible With | Notes |
+|-----------|-----------------|-------|
+| `@simplewebauthn/server@^13.2.3` | Node ≥ 18 (already required), browser support: Chrome 67+, Safari 14+, Firefox 60+ | Multi-RP_ID **verification** has no browser-version floor (server-only); ROR **hosting/discovery** requires Chrome/Edge 128+ or Safari 18+. |
+| `pino@^10.3.1` | Node ≥ 14 | Already redact-configured (Phase 3 + MPC-09). New hook errors should be logged with the same logger to inherit redaction. |
+| `zod@^4.3.6` | TypeScript ≥ 4.5 (we're on 5.9.3) | Use for hook return-value validation — consistent with Phase 2 pattern. |
+| Node ≥ 18 | `crypto.createHash`, `crypto.randomUUID`, WebCrypto | All needed primitives are native. No polyfill. |
+
+---
+
+## Integration Notes (Knock-On Effects)
+
+- **`tsup` externalisation:** No change. We add no new deps, so the externals list stays as-is.
+- **Type exports:** Five new exported types from `/server`: `AnonAuthHooks` (interface), `AuthEvent` (branded type), `BackfillResult`, `SecondFactorResult`, `OnAuthEventHandler`. All additive — does not break the v0.6.1 frozen contract.
+- **CJS/ESM dual build:** No change. New types are pure TypeScript; no runtime code requires module-format-specific handling.
+- **Test infrastructure:** `vitest@^4.0.18` already installed. New test files extend the existing 280-test suite; no new mock library needed (`vi.fn()` covers hook callback assertions).
+- **Frozen `MPCAccountManager` contract:** Untouched. None of these features modify MPC paths.
+- **Backwards compatibility:** All hook fields are optional. v0.6.1 consumers upgrade to v0.7.0 with no config changes; new features are opt-in.
 
 ---
 
 ## Sources
 
-- Project constraints: `.planning/PROJECT.md` (HIGH confidence — primary source)
-- Existing stack: `.planning/codebase/STACK.md` (HIGH confidence — ground truth)
-- Security concerns: `.planning/codebase/CONCERNS.md` (HIGH confidence — ground truth)
-- Node.js `crypto.timingSafeEqual` API: Node.js >= 15 built-in (HIGH confidence)
-- Library selections: Training data (knowledge cutoff August 2025), unverified against live registry (MEDIUM confidence on versions)
-- OWASP CSRF cheat sheet: double-submit cookie pattern recommendation (HIGH confidence — stable security guidance)
-- AWS SDK v2 deprecation: AWS officially announced v3 as the migration target (HIGH confidence)
-- `csurf` deprecation: Removed from npm registry due to abandonment and known issues (HIGH confidence)
+- **Context7:** Not used — `@simplewebauthn/server` API verified directly from upstream source and docs (more authoritative for this specific question).
+- **[@simplewebauthn/server official docs](https://simplewebauthn.dev/docs/packages/server)** — confirmed `expectedRPID: string \| string[]` and `expectedOrigin: string \| string[]`. (HIGH)
+- **[SimpleWebAuthn CHANGELOG.md (master)](https://github.com/MasterKale/SimpleWebAuthn/blob/master/CHANGELOG.md)** — multi-RPID/multi-origin verification shipped in v1.0.0; latest release is v13.3.0 (2025-03-10). (HIGH)
+- **[verifyAuthenticationResponse.ts (master)](https://github.com/MasterKale/SimpleWebAuthn/blob/master/packages/server/src/authentication/verifyAuthenticationResponse.ts)** — current source confirms array-form parameter signature. (HIGH)
+- **[GitHub Releases — MasterKale/SimpleWebAuthn](https://github.com/MasterKale/SimpleWebAuthn/releases)** — v13.x release timeline; no API changes between 13.2.3 and 13.3.0. (HIGH)
+- **[Related Origin Requests — passkeys.dev](https://passkeys.dev/docs/advanced/related-origins/)** — `.well-known/webauthn` JSON structure, `origins` array contract, eTLD+1 processing rules. (HIGH)
+- **[Allow passkey reuse with ROR — web.dev](https://web.dev/articles/webauthn-related-origin-requests)** — Chrome/Edge 128+ shipped support; setup walkthrough. (HIGH)
+- **[Chrome 129 ROR announcement — developer.chrome.com](https://developer.chrome.com/blog/passkeys-updates-chrome-129)** — Chrome browser support timeline. (HIGH)
+- **[WebAuthn ROR explainer — w3c/webauthn wiki](https://github.com/w3c/webauthn/wiki/Explainer:-Related-origin-requests)** — spec rationale and security model. (HIGH)
+- **Project files read:** `package.json` (current pins), `src/server/webauthn.ts` (standalone API), `src/server/passkey.ts` (managed API — `backedUp` already extracted line 197), `src/server/index.ts` (`createAnonAuth` config surface), `.planning/PROJECT.md` (constraints, frozen-contract). (HIGH — direct source reading)
 
 ---
 
-*Research date: 2026-03-14 | All version claims MEDIUM confidence — verify with npm registry before pinning*
+*Stack research for: v0.7.0 Consumer Hooks & Recovery Hardening*
+*Researched: 2026-04-29*

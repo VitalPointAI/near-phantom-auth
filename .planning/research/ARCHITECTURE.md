@@ -1,573 +1,432 @@
-# Architecture: Security Hardening Integration Patterns
+# Project Research — Architecture for v0.7.0 Consumer Hooks & Recovery Hardening
 
-**Project:** near-phantom-auth (hardening milestone)
-**Researched:** 2026-03-14
-**Scope:** How rate limiting, input validation, CSRF protection, transaction integrity, and structured logging each integrate with the existing factory pattern and Express router architecture.
-
----
-
-## Structural Context: This is a Library, Not a Server
-
-The single most important architectural constraint for every hardening decision:
-`@vitalpoint/near-phantom-auth` is a published npm library. Consuming applications do `app.use('/auth', auth.router)`. The library **cannot** install global Express middleware without the consumer's knowledge and consent, and it **cannot** assume what other middleware the consumer has configured.
-
-Every hardening concern must be either:
-1. Self-contained within the routers the library controls (`createRouter`, `createOAuthRouter`), or
-2. Exposed as opt-in middleware/config via `AnonAuthConfig` and `AnonAuthInstance`.
-
-This rules out approaches like "install rate limiting at the Express app level" — the library only owns its own sub-routers.
+**Project:** `@vitalpoint/near-phantom-auth` v0.6.1 → v0.7.0
+**Researched:** 2026-04-29
+**Confidence:** HIGH (sourced directly from current source; no speculation)
+**Critical pre-frame:** `MPCAccountManager` is FROZEN by consumer pin. None of the v0.7.0 features touch `mpc.ts` directly — they all live above it (router, passkey manager, webauthn standalone, type config). All response/config shape changes below are ADDITIVE (new optional fields or new top-level keys).
 
 ---
 
-## Existing Architecture: Where Things Live
+## Feature 1 — Backup-Eligibility Flag Exposure
 
-```
-createAnonAuth(config)               ← Factory entry point (src/server/index.ts)
-  ├── createPostgresAdapter()        ← Database layer (pure data)
-  ├── createSessionManager()         ← Session domain logic
-  ├── createPasskeyManager()         ← WebAuthn domain logic
-  ├── createMPCManager()             ← NEAR domain logic
-  ├── createWalletRecoveryManager()  ← Recovery domain logic
-  ├── createIPFSRecoveryManager()    ← Recovery domain logic
-  ├── createOAuthManager()           ← OAuth domain logic
-  ├── createAuthMiddleware()  → middleware   ← Exported to consumers
-  ├── createRequireAuth()     → requireAuth  ← Exported to consumers
-  ├── createRouter()          → router       ← Exported to consumers
-  └── createOAuthRouter()     → oauthRouter  ← Exported to consumers
-```
+### Current Data Flow (verified)
 
-**Route handlers** live in `createRouter()` and `createOAuthRouter()`. These are the two routers the library registers all its own routes on. Hardening middleware inserted into these routers is invisible to consumers and does not break the public API.
+`@simplewebauthn/server` `verifyRegistrationResponse()` returns `registrationInfo.credentialBackedUp` (boolean) and `registrationInfo.credentialDeviceType` (`'singleDevice' | 'multiDevice'`). The `'multiDevice'` deviceType is the de-facto "backup-eligible" flag — backup-eligible authenticators are allowed to be backed up; `backedUp` reflects whether they ARE backed up.
 
-**The public API surface is:**
-- `createAnonAuth(config: AnonAuthConfig): AnonAuthInstance` — the factory
-- `anonAuth.router`, `anonAuth.oauthRouter` — Express routers (consumed via `app.use`)
-- `anonAuth.middleware`, `anonAuth.requireAuth` — middleware handlers
-- `anonAuth.db`, `anonAuth.sessionManager`, etc. — manager instances for advanced use
+- `src/server/passkey.ts:182-201` — `finishRegistration()` already extracts `backedUp` and `deviceType`, returns them in `passkeyData`.
+- `src/server/webauthn.ts:233-270` — `verifyRegistration()` (standalone) already returns `credential.backedUp` and `credential.deviceType` in its `VerifyRegistrationResult`.
+- `src/server/router.ts:213-221` — router persists `passkeyData.backedUp` to `anon_passkeys.backed_up` column.
+- `src/server/router.ts:235-239` — `/register/finish` response is `{ success, codename, nearAccountId }` — does NOT surface `backedUp`.
+- `src/server/router.ts:312-315` — `/login/finish` response is `{ success, codename }` — also does NOT surface `backedUp`.
+- During login, `passkeyManager.finishAuthentication()` returns the `passkey` (which has `backedUp` from DB), but `router.ts:307` ignores it.
 
----
+**Note:** `credentialBackedUp` / `'multiDevice'` are the only signals. The WebAuthn AuthenticatorData `flags.BE` (Backup Eligibility) and `flags.BS` (Backup State) bits are folded by `@simplewebauthn/server` into `credentialDeviceType` (`'multiDevice'` implies BE=1) and `credentialBackedUp` (BS bit) respectively — there is no separate `backupEligible` boolean on the library shape today.
 
-## Hardening Concern 1: Rate Limiting
+### Integration Points (modify)
 
-### Where it fits
+| File | Function | Change |
+|---|---|---|
+| `src/server/router.ts` | `POST /register/finish` handler | Read `passkeyData.deviceType` and `passkeyData.backedUp` (already in scope); add to response under a new `passkey` key (additive nested object) |
+| `src/server/router.ts` | `POST /login/finish` handler | Capture `passkey` from `passkeyManager.finishAuthentication()` return (already has it but discards), add to response under same nested `passkey` key |
+| `src/types/index.ts` | `RegistrationFinishResponse`, `AuthenticationFinishResponse` | Add optional `passkey?: { backedUp: boolean; backupEligible: boolean }` |
+| `src/server/webauthn.ts` | `VerifyRegistrationResult.credential` | Add a derived `backupEligible: boolean` (computed: `deviceType === 'multiDevice'`) |
+| `src/client/api.ts` | `RegistrationFinishResponse`, `AuthenticationFinishResponse` reflected types | Already imported from `src/types`; gets the field automatically |
+| `src/client/hooks/useAnonAuth.tsx` | `AnonAuthState` | Add optional `passkeyBackedUp: boolean \| null`, `passkeyBackupEligible: boolean \| null` |
+| `src/client/hooks/useAnonAuth.tsx` | `register` and `login` callbacks | Read `result.passkey?.backedUp` / `.backupEligible`, store in state |
 
-Rate limiting is HTTP-layer middleware. In Express, `express-rate-limit` creates `RequestHandler` functions that can be applied to a router or specific routes with `router.use()` or inline as `router.post('/login/start', limiter, handler)`.
+### New Components (add)
 
-**Correct placement: inside `createRouter()` and `createOAuthRouter()`, applied before route handlers.**
-
-The library owns both routers completely. Adding `router.use(createRateLimiter(...))` at the top of `createRouter()` (after `router.use(json())`) is fully contained.
-
-### Granularity: global router vs per-route
-
-A blanket per-router rate limit is insufficient. Recovery endpoints need much stricter limits than session checks. The architecture calls for per-route or per-group limits:
-
-```
-Strict (5 req/15 min per IP):  /register/start, /login/start, /recovery/**
-Normal (20 req/15 min per IP): /register/finish, /login/finish
-Relaxed (60 req/min per IP):   /session (GET, read-only)
-OAuth-specific (10 req/15 min): /:provider/start, /:provider/callback
-```
-
-### Integration pattern: factory receives limiter config
-
-`AnonAuthConfig` gains an optional `rateLimiting` key. `createRouter()` and `createOAuthRouter()` receive the config and construct their own limiters internally. This keeps `express-rate-limit` as a direct dependency of the library (not a peer dep) and consumers do not need to know about it.
-
-```typescript
-// AnonAuthConfig addition (src/types/index.ts)
-rateLimiting?: {
-  enabled?: boolean;            // default: true
-  windowMs?: number;            // default: 15 * 60 * 1000
-  maxRegistration?: number;     // default: 5
-  maxLogin?: number;            // default: 20
-  maxRecovery?: number;         // default: 5
-  keyGenerator?: (req: Request) => string;  // default: req.ip
-};
-```
-
-### Cross-cutting vs localized
-
-Rate limiting is **cross-cutting across both routers** but **localized within the HTTP layer**. It does not touch domain logic (managers), the database layer, or the session layer. Zero changes to `SessionManager`, `PasskeyManager`, or any domain module.
-
-### API compatibility
-
-No breaking change. The `router` and `oauthRouter` interfaces on `AnonAuthInstance` are unchanged — they remain `Router` objects. Rate limiters are internal to the router construction. Existing consumers who do `app.use('/auth', auth.router)` get rate limiting automatically.
-
----
-
-## Hardening Concern 2: Input Validation (zod)
-
-### Where it fits
-
-Input validation belongs in route handlers, before any manager method is called. It is **not** a middleware — it is logic inside each route handler that runs `schema.parse(req.body)` and returns 400 on failure.
-
-**Current state:** Route handlers do ad-hoc presence checks:
-```typescript
-if (!challengeId || !response || !tempUserId || !codename) {
-  return res.status(400).json({ error: 'Missing required fields' });
-}
-```
-
-This only checks for truthiness, not shape, type, or length constraints.
-
-### Integration pattern: schema-per-route, inline in handler
-
-Each route handler gets a corresponding zod schema at the top of the file. The parse replaces the manual checks:
-
-```typescript
-// At top of router.ts
-import { z } from 'zod';
-
-const RegisterFinishSchema = z.object({
-  challengeId: z.string().uuid(),
-  response: z.object({ ... }),  // WebAuthn RegistrationResponseJSON shape
-  tempUserId: z.string().uuid(),
-  codename: z.string().min(1).max(100),
-});
-
-// Inside handler:
-const parsed = RegisterFinishSchema.safeParse(req.body);
-if (!parsed.success) {
-  return res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
-}
-const { challengeId, response, tempUserId, codename } = parsed.data;
-```
-
-**Alternatively** (slightly cleaner for many routes): a shared validation middleware factory:
-
-```typescript
-function validate<T>(schema: z.ZodSchema<T>): RequestHandler {
-  return (req, res, next) => {
-    const result = schema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: 'Invalid request', details: result.error.flatten() });
-    }
-    req.body = result.data;  // Replace with parsed/coerced data
-    next();
-  };
-}
-
-router.post('/register/finish', validate(RegisterFinishSchema), async (req, res) => { ... });
-```
-
-The middleware factory approach is cleaner for `router.ts` and `oauth/router.ts` because routes are well-defined. It also strips unknown fields automatically (zod's `.strict()` mode) which is a security property worth having.
-
-### Schemas needed (full route inventory)
-
-**src/server/router.ts:**
-- `POST /register/start` — no body (codename style from config, not request)
-- `POST /register/finish` — `{ challengeId: uuid, response: WebAuthn shape, tempUserId: uuid, codename: string }`
-- `POST /login/start` — `{ codename?: string }`
-- `POST /login/finish` — `{ challengeId: uuid, response: WebAuthn shape }`
-- `POST /logout` — no body
-- `GET /session` — no body
-- `POST /recovery/wallet/link` — no body (requires session)
-- `POST /recovery/wallet/verify` — `{ signature: string, challenge: string, walletAccountId: string }`
-- `POST /recovery/wallet/start` — no body
-- `POST /recovery/wallet/finish` — `{ signature: string, challenge: string, nearAccountId: string }`
-- `POST /recovery/ipfs/setup` — `{ password: string }`
-- `POST /recovery/ipfs/recover` — `{ cid: string, password: string }`
-
-**src/server/oauth/router.ts:**
-- `GET /providers` — no body
-- `GET /:provider/start` — param validation (`google|github|twitter`)
-- `POST /:provider/callback` — `{ code: string, state: string }`
-- `POST /:provider/link` — `{ code: string, state?: string, codeVerifier?: string }`
-
-### Cross-cutting vs localized
-
-Input validation is **localized to the HTTP layer** (route handlers). It does not touch managers, the database, or session management. The schemas live alongside their routes in `router.ts` and `oauth/router.ts`. No changes to `src/types/index.ts` interface or any manager.
-
-### API compatibility
-
-No breaking change. The validation only affects what reaches the handler logic — consumers calling valid requests see no difference. Error response format changes (more structured 400 bodies) are backward compatible since error responses were never part of the documented API contract.
-
----
-
-## Hardening Concern 3: CSRF Protection
-
-### The actual threat model for this library
-
-The library defaults to `SameSite=strict` session cookies. `SameSite=strict` is a strong CSRF defense on its own for the default configuration. However:
-
-1. `sameSite` is configurable in `SessionConfig` — a consumer could set `'lax'` or `'none'`
-2. The library should not rely solely on consumer not misconfiguring this
-3. The OAuth callback uses `SameSite=lax` (required for OAuth redirect flows)
-
-### Where CSRF tokens fit
-
-CSRF token verification is a middleware concern. The pattern for a library is:
-
-1. **For state-changing routes on `router` (passkey):** The routes use `SameSite=strict` cookies. Add a `csrfProtection` opt-in to `AnonAuthConfig` that, when enabled, verifies a `X-CSRF-Token` header on all mutating routes. The library generates the CSRF token at session creation time and stores it in a separate non-HttpOnly cookie (readable by JS) or in the session payload.
-
-2. **For OAuth callback:** The existing state parameter in the OAuth flow already provides CSRF protection for the OAuth redirect. The `oauth_state` cookie + state comparison in the callback is the correct CSRF defense for that flow. No additional token needed there.
-
-### Implementation pattern: router-level middleware with header check
-
-```typescript
-// In createRouter(), if CSRF enabled:
-const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-router.use((req, res, next) => {
-  if (!csrfMethods.has(req.method)) return next();
-  const token = req.headers['x-csrf-token'];
-  const expected = getCsrfTokenForSession(req, config.secret);
-  if (!token || !timingSafeEqual(Buffer.from(token as string), Buffer.from(expected))) {
-    return res.status(403).json({ error: 'CSRF validation failed' });
+- **Type:** `BackupEligibility` in `src/types/index.ts`:
+  ```ts
+  export interface BackupEligibility {
+    backupEligible: boolean;  // BE bit (multi-device authenticator)
+    backedUp: boolean;        // BS bit (currently synced to cloud / hardware backed up)
   }
-  next();
-});
-```
+  ```
+- **Helper (internal):** `deriveBackupEligibility(passkeyData)` in a new `src/server/backup.ts` (single-source-of-truth for the deviceType→backupEligible mapping, used by both router and webauthn.ts).
 
-The CSRF token generation derives from the session cookie value + a server secret (double-submit cookie pattern without a separate cookie). This requires no database storage.
+### Data Flow Changes
 
-**Alternatively:** Use the simpler double-submit cookie pattern — the library sets a readable `csrf_token` cookie alongside the session, and verifies `req.headers['x-csrf-token'] === req.cookies.csrf_token`. This requires `cookie-parser` to be installed, but the OAuth router already depends on it.
+**Request shapes:** unchanged.
+**Response shapes (additive only):**
+- `/register/finish`: `{ success, codename, nearAccountId, passkey?: { backupEligible, backedUp } }`
+- `/login/finish`: `{ success, codename, passkey?: { backupEligible, backedUp } }`
+- standalone `verifyRegistration()` result `.credential.backupEligible` (computed)
 
-**Recommended approach:** Double-submit cookie with HMAC. Token = `HMAC(sessionId, secret)`. Client reads the `csrf_token` cookie (not HttpOnly) and echoes it as `X-CSRF-Token` header. Server recomputes and compares with `timingSafeEqual`.
+### Backwards Compat
 
-### CSRF is opt-in for API-only consumers
+- `passkey` is a new optional nested key on the response. Existing consumers ignore unknown keys → safe.
+- No DB schema changes (column already exists since v0.5).
+- Optional in `AnonAuthState` → React consumers reading the old shape unaffected.
 
-Many consumers of this library use it as a pure API backend with clients that handle CSRF themselves (e.g., SPA with their own CSRF framework). CSRF protection should be opt-in via `AnonAuthConfig.csrf.enabled`.
+### Build Order Within Feature
 
-```typescript
-csrf?: {
-  enabled?: boolean;            // default: false (opt-in, breaking to existing)
-  cookieName?: string;          // default: 'csrf_token'
-  headerName?: string;          // default: 'x-csrf-token'
-};
-```
+1. Add `BackupEligibility` type + `deriveBackupEligibility()` helper.
+2. Wire into `verifyRegistration()` result (standalone webauthn.ts).
+3. Wire into `/register/finish` response.
+4. Wire into `/login/finish` response (requires capturing `passkey` from `finishAuthentication` — minor refactor).
+5. Update React hook state.
+6. Tests: unit on helper; integration on both endpoints.
 
-### Cross-cutting vs localized
+### Tsup / Externalization
 
-CSRF is **cross-cutting across both routers** and the session layer (token derivation). The middleware goes into the router. Session token generation adds one step to `createSession()`. **The session manager interface does not change** — CSRF token generation can be a separate utility function that operates on session IDs.
-
----
-
-## Hardening Concern 4: Transaction Integrity (Registration Flow)
-
-### The problem
-
-`POST /register/finish` in `src/server/router.ts` (lines 96-155) performs four sequential writes:
-1. `passkeyManager.finishRegistration()` — writes a challenge deletion
-2. `mpcManager.createAccount()` — creates a NEAR MPC account (external, irreversible)
-3. `db.createUser()` — inserts user row
-4. `db.createPasskey()` — inserts passkey row
-5. `sessionManager.createSession()` — inserts session row
-
-If step 4 fails after step 3, the database contains a user record with no associated passkey. The user cannot authenticate and cannot re-register (codename is taken). If step 3 fails after step 2, a NEAR MPC account was created but is not referenced in any database record (orphaned on-chain account).
-
-### The partial transaction boundary
-
-The NEAR MPC account creation (step 2) is an external, non-transactional call. It **cannot** be included in a database transaction. This creates an irreducible partial-atomicity boundary:
-
-```
-[NEAR MPC account creation]  ← External, cannot roll back
-        ↓
-[DB transaction: createUser + createPasskey + createSession]
-```
-
-The database transaction can be wrapped but the NEAR call cannot. If the DB transaction fails after the NEAR call, the MPC account is orphaned. This is an acceptable risk given NEAR accounts are cheap and low-stakes (no funded accounts for testnet, minimal funding for mainnet).
-
-### Integration pattern: PostgreSQL transaction wrapper
-
-The `DatabaseAdapter` interface needs a `transaction()` method or the PostgreSQL adapter needs to expose a transaction-capable variant for multi-step flows.
-
-**Option A: Add `transaction()` to `DatabaseAdapter` interface**
-```typescript
-// DatabaseAdapter addition
-transaction<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T>;
-```
-This is the clean approach but adds to the interface contract that custom adapters must implement.
-
-**Option B: Router accepts a `transactionFn` from config (PostgreSQL-specific)**
-The PostgreSQL adapter wraps the three write steps in `BEGIN/COMMIT/ROLLBACK` internally through a specialized method like `createUserWithPasskey(input)`.
-
-**Option C: Restructure the registration handler to retry cleanly on partial failure**
-On any error after `createUser`, attempt to delete the partially-created user. This is not true atomicity but reduces the orphan window.
-
-**Recommended: Option A** — add `transaction()` to `DatabaseAdapter`. This is a clean extension that custom adapters can implement however they want. The existing PostgreSQL adapter already has `BEGIN/COMMIT/ROLLBACK` usage in `createOAuthUser()` (around line 386-440), so the pattern already exists.
-
-```typescript
-// Registration handler after change:
-const mpcAccount = await mpcManager.createAccount(tempUserId);  // External, before tx
-
-await db.transaction(async (tx) => {
-  const user = await tx.createUser({ ... });
-  await tx.createPasskey({ ... });
-  await sessionManager.createSession(user.id, res, { ... });
-  // Note: session.createSession writes a cookie but the DB session write goes into tx
-});
-```
-
-### Cross-cutting vs localized
-
-Transaction wrapping is **localized to the registration route handler** in `router.ts` and requires an **interface change to `DatabaseAdapter`**. It does not affect the `PasskeyManager`, `MPCAccountManager`, or session cookie logic. The database adapter interface change is additive — existing custom adapters that don't implement `transaction()` can throw `new Error('transaction() not supported')` or the type can mark it optional initially.
+No new deps. No bundle change.
 
 ---
 
-## Hardening Concern 5: Structured Logging (pino)
+## Feature 2 — Second-Factor Enrolment Hook
 
-### The current state
+### Required Decision (call out for roadmap)
 
-Every module uses `console.error('[ComponentTag] message', error)` and `console.log('[ComponentTag] message')`. There are ~40 console statements across server code. Many log sensitive data: treasury public keys, account IDs, derivation paths, transaction hashes.
+Two competing shapes — pick before implementation:
 
-### Why a library must not force a logger on consumers
+**Option A (recommended): Inline hook inside `/register/finish`, async-await, BEFORE session creation.**
+- Hook fires AFTER `verifyRegistration` succeeds AND AFTER `mpcManager.createAccount` AND AFTER `db.createUser` + `db.createPasskey`, BUT BEFORE `sessionManager.createSession`.
+- Rationale: gives the hook the full `userId` (so it can store its own 2FA enrolment record) but withholds the session cookie until it returns. If the hook throws, registration is rolled back via the existing transaction wrapper.
+- Hook contract: `(ctx: { userId, codename, nearAccountId, req, res }) => Promise<{ enrolled: boolean; metadata?: Record<string, unknown> }>`.
+- Response gains: `secondFactor?: { enrolled: boolean; metadata?: ... }`.
 
-Calling `pino()` directly inside the library and logging to stdout would interfere with consumer logging setup. The correct pattern for a library is **dependency injection** — accept a logger interface, default to a silent or minimal logger.
+**Option B: Separate post-register endpoint.**
+- Consumer calls `/register/finish` (gets session), then calls their own `/2fa/enrol` route.
+- Library's role: just expose a config flag `requireSecondFactor: true` and a session-claim `secondFactorPending: true` until consumer signals completion.
+- More flexible, but requires session-claim plumbing → more invasive.
 
-### Integration pattern: injectable logger with default no-op
+**Recommendation:** Option A unless a later research finding argues otherwise.
 
-```typescript
-// In AnonAuthConfig (src/types/index.ts)
-logger?: {
-  info(msg: string, data?: Record<string, unknown>): void;
-  warn(msg: string, data?: Record<string, unknown>): void;
-  error(msg: string, err?: Error | unknown, data?: Record<string, unknown>): void;
-  debug(msg: string, data?: Record<string, unknown>): void;
-};
-```
+### Integration Points (Option A — modify)
 
-The default is a no-op logger (no output). Consumers who want pino can pass one:
-```typescript
-import pino from 'pino';
-const auth = createAnonAuth({
-  ...config,
-  logger: pino({ level: 'info', redact: ['nearAccountId', 'derivationPath'] }),
-});
-```
+| File | Function | Change |
+|---|---|---|
+| `src/server/index.ts` | `createAnonAuth(config)` | Accept new `config.secondFactor?: SecondFactorHook` and pass to `createRouter` |
+| `src/server/router.ts` | `RouterConfig` | Add `secondFactor?: SecondFactorHook` |
+| `src/server/router.ts` | `POST /register/finish` handler (line ~178) | After user+passkey persisted, before `sessionManager.createSession`, await hook if configured. On throw → rollback (already wrapped in `db.transaction` per BUG-04 from v0.5) |
+| `src/types/index.ts` | `AnonAuthConfig` | Add `secondFactor?: SecondFactorHook` |
 
-Inside the library, all `console.error` and `console.log` calls are replaced with calls to the injected logger instance. The logger instance is passed into each manager factory and each router factory as part of the config/context.
+### New Components (add)
 
-### Logger propagation through the factory
+- **Type** in `src/types/index.ts`:
+  ```ts
+  export interface SecondFactorContext {
+    userId: string;
+    codename: string;
+    nearAccountId: string;
+    req: Request;
+  }
+  export interface SecondFactorResult {
+    enrolled: boolean;
+    metadata?: Record<string, unknown>;
+  }
+  export type SecondFactorHook = (ctx: SecondFactorContext) => Promise<SecondFactorResult>;
+  ```
+- **No new DB column on `anon_users`** — the library should NOT track 2FA state. The hook returns `metadata`; consumers persist it in their own table.
+- **No new endpoint** — sits inside register/finish.
 
-`createAnonAuth()` creates the logger (or no-op default), then passes it to:
-- `createRouter(config)` — added to `RouterConfig`
-- `createOAuthRouter(config)` — added to `OAuthRouterConfig`
-- `createSessionManager(db, config)` — added to `SessionConfig`
-- Each manager factory that currently logs
+### Data Flow Changes
 
-This is a **pervasive but mechanical change** — find-and-replace `console.error/log` with `logger.error/info`, no logic changes required.
+- Adds an awaited callback boundary inside the existing transaction.
+- Response gains `secondFactor?: { enrolled, metadata }`.
+- If hook throws and `db.transaction` is implemented, the user/passkey insert is rolled back. **Critical:** the `mpcManager.createAccount` call happens BEFORE the transaction (line 200) — already fund-on-chain at that point. The hook running INSIDE the transaction means an MPC account exists with no DB record on hook failure. Document this trade-off in JSDoc and recommend hooks be idempotent + non-throwing if MPC funding has occurred. (Same issue exists today with `db.createUser` failure — not a regression.)
 
-### Sensitive data redaction
+### Standalone webauthn entry?
 
-The logger interface should define a `redact` option understood by pino. Critical fields to redact in production:
-- `derivationPath` — links anonymous identity to NEAR account
-- `mpcPublicKey` — unnecessary to log
-- `treasuryPrivateKey` — must never be logged (not currently logged, but guard against future accidents)
-- `nearAccountId` — acceptable at debug level, not in production info/warn logs
-- `tempUserId` — transmitted to client during registration, but no need to log
+NO — this is router-only. Standalone `webauthn.ts` has no concept of "user", "session", or "MPC account" — adding 2FA there would conflate concerns. Document in JSDoc that consumers using standalone webauthn implement 2FA themselves.
 
-Redaction is a pino configuration concern, not a library concern. The library's logger interface is log-level-aware but field-redaction is left to the consumer's pino config.
+### Backwards Compat
 
-### Cross-cutting vs localized
+All optional. Without `config.secondFactor`, behavior identical to v0.6.1.
 
-Logging is **fully cross-cutting** — it touches every module. However, the changes are mechanical: no logic changes, only substituting `console.*` calls with `logger.*` calls. The logger instance flows through config injection. No module gets a new dependency on a logging framework; each module only depends on the abstract logger interface.
+### Build Order Within Feature
 
----
-
-## Hardening Concern 6: Timing-Safe Session Verification
-
-### Where it fits
-
-A single line change in `src/server/session.ts`, `verifySessionId()`:
-
-```typescript
-// Current (unsafe):
-if (signature !== expectedSignature) return null;
-
-// Fixed:
-const sigBuf = Buffer.from(signature);
-const expBuf = Buffer.from(expectedSignature);
-if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
-```
-
-This is **localized to session.ts** and has zero architectural implications.
+1. Add types in `src/types/index.ts`.
+2. Add config plumbing through `createAnonAuth` → `createRouter`.
+3. Wire hook call site inside `/register/finish` (inside transaction, before `createSession`).
+4. Document MPC-funded-but-rolled-back failure mode in JSDoc.
+5. Tests: hook fires once on success; hook throw rolls back DB; hook absent = identity behavior; hook receives correct `userId`.
 
 ---
 
-## Hardening Concern 7: Server-Side Secret Salt for Account Derivation
+## Feature 3 — Lazy-Backfill Hook for pre-v0.6.0 Accounts
 
-### Where it fits
+### Domain Clarification
 
-`src/server/mpc.ts` derives accounts as `sha256("implicit-${userId}")`. The `tempUserId` is sent to the client in the registration start response, making the derivation predictable.
+The columns referenced as `key_bundle_iv` / `sealing_key_hex` do **NOT** exist in this library's `anon_users` schema (`src/server/db/adapters/postgres.ts:32-40`). They exist (if at all) in the **consumer's** application DB. The library never stored sealing keys — `sealingKeyHex` is validated and forwarded but never persisted (`src/server/validation/schemas.ts:38-43`).
 
-Fix: `sha256("implicit-${userId}-${config.derivationSalt}")` where `derivationSalt` is a server-side secret from `AnonAuthConfig.mpc.derivationSalt`.
+So this hook is a **pass-through hook** — the library invokes it during `/login/finish` to let the consumer determine whether their account record is missing key material and, if so, run a backfill ceremony.
 
-This is **localized to `mpc.ts`** and requires one addition to `MPCAccountConfig`. New deployments must set this config value; existing deployments should not rotate it (doing so would invalidate all existing MPC account associations).
+(See Pitfalls research for an alternate framing where the library DOES introduce a `key_bundle` column. The roadmap should resolve which framing applies — pass-through vs library-managed — at requirements time.)
 
----
+### Integration Points (modify)
 
-## Implementation Order and Dependencies
+| File | Function | Change |
+|---|---|---|
+| `src/server/router.ts` | `POST /login/finish` (line 284) | After `verified && userId` confirmed, before `sessionManager.createSession`, optionally invoke `config.recoveryBackfill?.(ctx)` if hook configured AND `sealingKeyHex` was supplied in body |
+| `src/server/index.ts` | `createAnonAuth` | Accept `config.recoveryBackfill?: RecoveryBackfillHook` |
+| `src/server/router.ts` | `RouterConfig` | Add `recoveryBackfill?: RecoveryBackfillHook` |
+| `src/types/index.ts` | `AnonAuthConfig` | Add `recoveryBackfill?: RecoveryBackfillHook` |
 
-The hardening tasks are ordered below by dependency and risk:
+### New Components (add)
 
-### Layer 1: Atomic, zero-dependency changes (do first)
+- **Type:**
+  ```ts
+  export interface RecoveryBackfillContext {
+    userId: string;
+    codename: string;
+    nearAccountId: string;
+    sealingKeyHex: string;  // required — backfill only meaningful when PRF available this login
+    req: Request;
+  }
+  export interface RecoveryBackfillResult {
+    backfilled: boolean;
+    reason?: 'already-current' | 'no-legacy-data' | 'completed' | 'skipped';
+  }
+  export type RecoveryBackfillHook = (ctx: RecoveryBackfillContext) => Promise<RecoveryBackfillResult>;
+  ```
 
-These changes have no dependencies on other hardening work and can be done independently:
+### Data Flow Changes
 
-| Change | File | Scope |
-|--------|------|-------|
-| Timing-safe session comparison | `session.ts` | 1 line |
-| Fix session refresh DB update | `session.ts` | Add `db.updateSessionExpiry()` |
-| Server-side MPC derivation salt | `mpc.ts`, `types/index.ts` | Localized |
-| Replace custom `base58Encode` | `mpc.ts` | Localized |
-| Fix NEAR float precision | `mpc.ts` | Localized |
-| Fix signed transaction public key | `mpc.ts` | Localized |
+- Request: unchanged (already accepts `sealingKeyHex` per PRF-08).
+- Response: optional `backfill?: { backfilled, reason }` (additive).
+- Library does NOT manage transactions for the hook — consumer manages their own DB tx (since it's their schema).
 
-**Why first:** No new dependencies, smallest diffs, highest security-to-effort ratio. All localized to single files. Tests can be written immediately after.
+### PRF Interaction
 
-### Layer 2: Input validation (builds on stable types, enables safer higher layers)
+- Backfill hook ONLY fires if `sealingKeyHex` was present in the login body. No PRF → no fresh sealing key → cannot backfill → skip silently.
+- Backfill is NOT an alternative to PRF; it's **complementary**: it's the migration path for accounts created before PRF was supported, run opportunistically when those accounts log in with a PRF-capable authenticator for the first time.
+- Document explicitly: backfill requires both (a) `requirePrf` is configured OR the authenticator happens to support PRF, AND (b) the consumer's hook detects legacy state.
 
-| Change | Files | Dependencies |
-|--------|-------|--------------|
-| Add zod dependency | `package.json` | none |
-| Define schemas per route | `router.ts`, `oauth/router.ts` | zod |
-| Replace manual checks with schema parse | `router.ts`, `oauth/router.ts` | schemas |
+### Backwards Compat
 
-**Why second:** Establishes trusted data shapes before adding rate limiting (limiters may inspect request fields for key generation). Also makes subsequent handler changes safer since inputs are guaranteed structured.
+Optional config + optional response key. Safe.
 
-### Layer 3: Structured logging (pervasive but mechanical)
+### Build Order Within Feature
 
-| Change | Files | Dependencies |
-|--------|-------|--------------|
-| Add logger interface to types | `types/index.ts` | none |
-| Thread logger through all factories | `server/index.ts`, all managers | interface |
-| Replace console.* calls | all server modules | logger instance |
-
-**Why third:** Logging changes are mechanical and large in diff size but low in logic risk. Doing it after Layer 1 means the corrected logic is already in place, so logging shows correct behavior. Doing it before rate limiting and CSRF means those new features can use the logger from the start.
-
-### Layer 4: Rate limiting (depends on routing structure being stable)
-
-| Change | Files | Dependencies |
-|--------|-------|--------------|
-| Add express-rate-limit dependency | `package.json` | none |
-| Add `rateLimiting` to `AnonAuthConfig` | `types/index.ts` | none |
-| Create limiter instances in `createRouter` | `router.ts` | config |
-| Create limiter instances in `createOAuthRouter` | `oauth/router.ts` | config |
-
-**Why fourth:** Depends on route structure, which should be stable after Layer 1-3 changes. Rate limiting is also easier to test once logging is in place (can see limiter activity in test logs).
-
-### Layer 5: Transaction integrity (requires database interface change)
-
-| Change | Files | Dependencies |
-|--------|-------|--------------|
-| Add `transaction()` to DatabaseAdapter | `types/index.ts` | none |
-| Implement `transaction()` in PostgreSQL adapter | `db/adapters/postgres.ts` | interface |
-| Wrap registration finish handler | `router.ts` | transaction API |
-
-**Why fifth:** Interface changes have downstream implications. Custom adapter users need to implement `transaction()`. This is the highest-impact interface change in the hardening pass and should be done after other route handler changes are stable.
-
-### Layer 6: CSRF (depends on session + routing being stable)
-
-| Change | Files | Dependencies |
-|--------|-------|--------------|
-| Add `csrf` to `AnonAuthConfig` | `types/index.ts` | none |
-| Add CSRF token generation to session creation | `session.ts` | config |
-| Add CSRF verification middleware to routers | `router.ts` | session + config |
-
-**Why last:** Most complex hardening task (involves session, routing, and client-side changes). Also the most likely to require iteration if consumer patterns vary. Client (`useAnonAuth` hook) also needs updating to send the CSRF header, which crosses the client/server boundary.
+1. Add types.
+2. Add config plumbing.
+3. Wire hook in `/login/finish` after auth success (before session creation, so consumer can use `req` headers).
+4. Tests: no hook = identity; hook fires only when `sealingKeyHex` present; hook errors propagate as 500 (or define a contained-error mode where backfill failure does NOT block login — recommended).
 
 ---
 
-## Component Boundary Map: Before and After
+## Feature 4 — Multi-RP_ID Verification
 
-### Current: Cross-cutting concerns scattered
+### Current Surface
 
-```
-HTTP Layer (router.ts)
-  ├── Ad-hoc presence checks (validation)
-  ├── console.error calls (logging)
-  └── No rate limiting, no CSRF, no transactions
+Single `rpId: string` everywhere:
+- `AnonAuthConfig.rp.id: string` (`src/types/index.ts:60`)
+- `PasskeyConfig.rpId: string` (`src/server/passkey.ts:39`)
+- `CreateRegistrationOptionsInput.rpId: string` (`src/server/webauthn.ts:64`)
+- `CreateAuthenticationOptionsInput.rpId: string` (`src/server/webauthn.ts:122`)
+- `VerifyRegistrationInput.expectedRPID: string` (`src/server/webauthn.ts:96`)
+- `VerifyAuthenticationInput.expectedRPID: string` (`src/server/webauthn.ts:159`)
 
-Session Layer (session.ts)
-  ├── console.error calls (logging)
-  └── String equality signature comparison (timing-unsafe)
+Threaded into `@simplewebauthn/server` calls at:
+- `src/server/passkey.ts:108` — `rpID: config.rpId` (registration options)
+- `src/server/passkey.ts:170` — `expectedRPID: config.rpId` (registration verify)
+- `src/server/passkey.ts:222` — `rpID: config.rpId` (authentication options)
+- `src/server/passkey.ts:277` — `expectedRPID: config.rpId` (authentication verify)
+- Same 4 sites in `src/server/webauthn.ts`.
 
-Manager Layer (mpc.ts, passkey.ts, etc.)
-  └── console.error/log calls (logging)
-```
+### `@simplewebauthn/server` Capability
 
-### After: Concerns properly layered
+`verifyRegistrationResponse` and `verifyAuthenticationResponse` accept `expectedRPID: string | string[]` (array form supported since simplewebauthn v8 — verified by Stack research; current pin is v13.2.3 which supports). `generateRegistrationOptions` and `generateAuthenticationOptions` take a single `rpID` — registration MUST pin to one RP_ID at creation time (the credential is bound to that RP_ID hash).
 
-```
-HTTP Layer (router.ts, oauth/router.ts)
-  ├── express-rate-limit middleware [NEW - rate limiting]
-  ├── CSRF verification middleware [NEW - CSRF]
-  ├── validate() middleware (zod) [NEW - input validation]
-  ├── db.transaction() wrapping [NEW - transaction integrity]
-  └── logger.info/error calls [NEW - structured logging]
+**Implication:** Generation = single. Verification = array allowed.
 
-Session Layer (session.ts)
-  ├── timingSafeEqual comparison [FIXED]
-  ├── db.updateSessionExpiry() call [FIXED]
-  └── logger.error calls [UPDATED]
+### Two paths (pick at requirements time)
 
-Manager Layer (mpc.ts, passkey.ts, etc.)
-  ├── Derivation salt in account creation [FIXED - mpc.ts]
-  └── logger.info/error calls [UPDATED]
+**Path A (minimal): array on verification only.** Registration stays single. Verification accepts `string | string[]`. Use case: cross-domain login when an apex domain change happened.
 
-Types Layer (types/index.ts)
-  ├── AnonAuthConfig.rateLimiting [NEW]
-  ├── AnonAuthConfig.csrf [NEW]
-  ├── AnonAuthConfig.logger [NEW]
-  ├── MPCAccountConfig.derivationSalt [NEW]
-  └── DatabaseAdapter.transaction() [NEW]
-```
+**Path B (full): registration also supports per-credential RP_ID + array on verification.** More invasive — would need a new column to remember which RPID a given credential was minted under. YAGNI for the stated goal.
 
----
+**Recommendation:** Path A.
 
-## Data Flow: Where Each Hardening Layer Intercepts
+### Integration Points (Path A — modify)
 
-```
-Incoming Request
-      │
-      ▼
-[Rate Limiter Middleware]          ← Layer 4, pre-handler, drops 429
-      │
-      ▼
-[CSRF Verification Middleware]     ← Layer 6, pre-handler, drops 403
-      │
-      ▼
-[JSON body-parser]                 ← existing, req.body populated
-      │
-      ▼
-[validate() Middleware (zod)]      ← Layer 2, pre-handler, drops 400
-      │
-      ▼
-[Route Handler]
-  ├── [logger.info]                ← Layer 3, throughout handler
-  ├── [sessionManager calls]       ← Layer 1 (timing-safe, refresh fixed)
-  ├── [db.transaction()]           ← Layer 5, for registration/finish only
-  │     ├── db.createUser()
-  │     └── db.createPasskey()
-  └── [mpcManager calls]           ← Layer 1 (derivation salt added)
-      │
-      ▼
-Response
-```
+| File | Function | Change |
+|---|---|---|
+| `src/types/index.ts` | `AnonAuthConfig.rp.id` | Keep as `string`. Add adjacent optional `rp.allowedIds?: string[]` (verification-time accepted RP_IDs, defaults to `[rp.id]`) |
+| `src/server/passkey.ts` | `PasskeyConfig` | Add `allowedRpIds?: string[]` |
+| `src/server/passkey.ts:170` | `finishRegistration` | `expectedRPID: config.allowedRpIds ?? config.rpId` |
+| `src/server/passkey.ts:277` | `finishAuthentication` | `expectedRPID: config.allowedRpIds ?? config.rpId` |
+| `src/server/index.ts:132-137` | `createPasskeyManager` call | Pass `allowedRpIds: rpConfig.allowedIds` |
+| `src/server/webauthn.ts` | `VerifyRegistrationInput.expectedRPID` | Widen type to `string \| string[]` |
+| `src/server/webauthn.ts` | `VerifyAuthenticationInput.expectedRPID` | Widen type to `string \| string[]` |
+| `src/server/webauthn.ts` | `verifyRegistrationResponse` / `verifyAuthenticationResponse` calls | Pass through unchanged (already supports both) |
+| `src/server/webauthn.ts` | `CreateRegistrationOptionsInput.rpId` | Keep as `string` |
+| `src/server/webauthn.ts` | `CreateAuthenticationOptionsInput.rpId` | Keep as `string` |
+
+### Critical Pitfall (cross-reference Pitfalls research R3)
+
+Naively widening to two parallel arrays for `expectedOrigin` and `expectedRPID` is an **origin-spoofing vector** — if origins and RP_IDs are not paired, a consumer accepting `origin=app.evil.com` for `rpId=example.com` will incorrectly verify. Pair-tuple pattern: `relatedOrigins: Array<{ origin: string; rpId: string }>` with startup validation.
+
+### Backwards Compat
+
+- `expectedRPID: string | string[]` — `string` still accepted, no caller changes.
+- `rp.id: string` unchanged; `rp.allowedIds` is new optional.
+- Default behavior: if `allowedIds` not provided, behaves exactly as v0.6.1.
+
+### Build Order Within Feature
+
+1. Verify simplewebauthn v13 (current pin) accepts array on verify (Stack research confirmed).
+2. Widen types in `webauthn.ts` (standalone path).
+3. Add `allowedRpIds` config to `PasskeyConfig` + thread to verify calls.
+4. Add `rp.allowedIds` to `AnonAuthConfig`, wire through `createAnonAuth`.
+5. Tests: single-string still works; array with current RPID at index N still verifies; array without matching RPID rejects; spoofed origin rejected (R3 from Pitfalls).
+
+### Tsup / Externalization
+
+No new deps. No bundle change.
 
 ---
 
-## Backward Compatibility Analysis
+## Feature 5 — Registration Analytics Hook (Anonymity-Preserving)
 
-| Change | Breaking? | Notes |
-|--------|-----------|-------|
-| Rate limiting added | No | New behavior, existing requests still work unless rate exceeded |
-| Zod validation | No | Valid requests are unchanged; error messages for invalid requests become more structured |
-| CSRF (opt-in default false) | No | Must be explicitly enabled, off by default |
-| `AnonAuthConfig` new optional fields | No | All new config fields are optional |
-| `DatabaseAdapter.transaction()` | Potentially | Custom adapters must implement it or mark it optional with a default implementation |
-| Logger injection | No | Default is no-op, no console output change without consumer action |
-| Timing-safe comparison | No | Internal fix, same external behavior |
-| Session DB refresh fix | No | Bug fix, not a behavior regression |
-| MPC derivation salt | No for new deploys | Existing deploys must NOT set this (would invalidate existing account associations); document clearly |
+### Constraint Reminder
 
-The only genuinely risky change is `DatabaseAdapter.transaction()`. Mitigation: make it optional in the interface with a default no-op that falls back to sequential operations, upgrading to atomic transaction only when implemented.
+The anonymity invariant from PROJECT.md is non-negotiable: **the analytics hook MUST NOT receive or be able to derive PII for anonymous-track users.** It can receive: timestamps, event types, RP_ID, success/failure. It MUST NOT include `userId`, raw `codename`, `nearAccountId`, raw `email`, full IP, or full UA.
+
+### Recommended Architecture
+
+**Single injectable analytics object via DI** (NOT EventEmitter — EventEmitter leaks listener errors silently and has no Promise contract). Pattern matches existing `logger`/`emailService` injection.
+
+```ts
+export interface AnalyticsHook {
+  emit(event: AnalyticsEvent): void | Promise<void>;
+}
+export type AnalyticsEvent =
+  | { type: 'register.start'; rpId: string; timestamp: Date }
+  | { type: 'register.finish.success'; rpId: string; timestamp: Date; backupEligible: boolean }
+  | { type: 'register.finish.failure'; rpId: string; timestamp: Date; reason: string }
+  | { type: 'login.start'; rpId: string; timestamp: Date; codenameProvided: boolean }
+  | { type: 'login.finish.success'; rpId: string; timestamp: Date; backupEligible: boolean }
+  | { type: 'login.finish.failure'; rpId: string; timestamp: Date; reason: string }
+  | { type: 'recovery.wallet.link.success'; timestamp: Date }
+  | { type: 'recovery.wallet.recover.success'; timestamp: Date }
+  | { type: 'recovery.ipfs.setup.success'; timestamp: Date }
+  | { type: 'recovery.ipfs.recover.success'; timestamp: Date }
+  | { type: 'oauth.callback.success'; provider: string; timestamp: Date }
+  | { type: 'account.delete'; timestamp: Date };
+```
+
+**Critical anonymity gates (cross-reference Pitfalls R2):**
+- NO `userId`, NO `codename`, NO `nearAccountId`, NO `email` in any event payload.
+- `req.ip` and `req.headers['user-agent']` MUST NOT be added.
+- Failure `reason` is a static enum, never an `Error.message` (which can echo input).
+- Type-level enforcement via tsc-fail fixture (mirroring v0.6.1 MPC-07 pattern).
+
+### Execution Mode
+
+**Fire-and-forget by default.** Wrapped in:
+```ts
+Promise.resolve(analytics?.emit(event)).catch(err => log.warn({ err }, 'analytics hook failed'));
+```
+Reason: analytics latency or failure must not block auth. Document explicitly that hooks should be fast and non-throwing; library will swallow errors with a warn-level log.
+
+Optional `awaitAnalytics: boolean` config flag for consumers who need synchronous guarantees (default: false).
+
+### Integration Points (modify)
+
+| File | Function | Change |
+|---|---|---|
+| `src/server/index.ts` | `createAnonAuth` | Accept `config.analytics?: AnalyticsHook` and pass to both routers |
+| `src/server/router.ts` | `RouterConfig` | Add `analytics?: AnalyticsHook` |
+| `src/server/router.ts` | All endpoints | Insert event emit at entry (start) and exit (success/failure) |
+| `src/server/oauth/router.ts` | `OAuthRouterConfig` | Add `analytics?: AnalyticsHook` |
+| `src/server/oauth/router.ts` | OAuth callback, link endpoints | Insert emits |
+| `src/types/index.ts` | `AnonAuthConfig` | Add `analytics?: AnalyticsHook`, `awaitAnalytics?: boolean` |
+
+### New Components (add)
+
+- **`src/server/analytics.ts`** — new module:
+  - Defines `AnalyticsHook`, `AnalyticsEvent` discriminated union.
+  - Exports `wrapAnalytics(hook?, opts)` — returns a safe `emit(event)` that handles fire-and-forget + error suppression + opt-in await.
+  - Single source for the event-shape type, used by both routers.
+
+### Data Flow Changes
+
+- No request/response shape changes.
+- New side-effect: events emitted during request lifecycle.
+- The shared `wrapAnalytics()` helper is the integration point; routers don't deal with try/catch directly.
+
+### Build Order Within Feature
+
+1. Build `src/server/analytics.ts` with type + safe emitter.
+2. Thread `analytics` config through `createAnonAuth` → both routers.
+3. Instrument passkey router endpoints (high-touch).
+4. Instrument OAuth router endpoints.
+5. Instrument recovery + account-deletion endpoints.
+6. Tests: emit fires on each path; emit failure does not break request; PII assertion test (snapshot of all event shapes — no userId/codename/email keys); tsc-fail fixture for type-level enforcement.
+
+### Tsup / Externalization
+
+No new deps. No bundle change.
 
 ---
 
-## Sources
+## Cross-Feature Build Order (Roadmap Recommendation)
 
-- Direct codebase analysis: `src/server/router.ts`, `src/server/oauth/router.ts`, `src/server/session.ts`, `src/server/index.ts`, `src/server/middleware.ts`, `src/types/index.ts`
-- `.planning/codebase/CONCERNS.md` — security audit findings
-- `.planning/codebase/ARCHITECTURE.md` — existing architecture analysis
-- Confidence: HIGH — all findings are grounded in the actual codebase. Pattern recommendations (injectable logger, per-route validators, double-submit CSRF) are well-established Express library patterns.
+Dependency analysis between features:
+- Feature 1 (backup-eligibility) is foundational — its derived types feed into Feature 5's analytics events (`backupEligible` field on success events).
+- Feature 5 (analytics) needs Feature 1's `BackupEligibility` shape if events reference it.
+- Features 2 (2FA hook), 3 (backfill hook), 4 (multi-RPID) are independent.
 
-*Research date: 2026-03-14*
+**Recommended phase order (architecture-perspective):**
+
+| Phase | Feature | Rationale |
+|---|---|---|
+| **Phase 1** | **Backup-Eligibility (F1)** | Smallest blast radius; pure additive response field; produces the `BackupEligibility` type that F5 references. Validates the additive-response pattern that all subsequent phases reuse. |
+| **Phase 2** | **Multi-RP_ID (F4)** | Independent of others. Stack research confirms simplewebauthn v13 array support — no research split needed. |
+| **Phase 3** | **Lazy-Backfill Hook (F3)** | Established hook pattern (config-driven optional callback in router). Lighter than 2FA — no transaction interaction. Builds the hook-injection muscle memory before F2's more invasive transaction-boundary work. |
+| **Phase 4** | **2nd-Factor Enrolment Hook (F2)** | Most invasive (sits inside transaction, blocks session creation, has MPC-funding-orphan edge case). Do this AFTER Phase 3 to reuse the hook-injection pattern and AFTER Phase 1 so hook ctx can include `backupEligible`. |
+| **Phase 5** | **Analytics Hook (F5)** | Last. Touches the most files (every endpoint). References `BackupEligibility` from Phase 1. Sweeps OAuth router too. Doing it last avoids re-instrumenting endpoints modified by phases 1–4. |
+
+(Note: Pitfalls and Features researchers proposed slightly different orders. Roadmapper to reconcile at requirements time.)
+
+### Cross-Cutting Risks
+
+1. **Test surface explosion** — every phase adds endpoint-response variants. Phase 5 (analytics) needs assertion that prior phases' new fields don't leak through events. Allocate test-writing time per phase, not just impl.
+2. **Type widening churn** — `RegistrationFinishResponse` / `AuthenticationFinishResponse` get new optional keys in Phase 1, possibly Phase 4 (`secondFactor`) and Phase 3 (`backfill`). Consider a single union of optional add-ons in Phase 1's design to avoid each later phase touching `src/types/index.ts` independently.
+3. **Tsup externalization** — none of the 5 features add a new runtime dependency. No `tsup.config.ts` change required.
+4. **Frozen MPCAccountManager contract** — none of these features touch `mpc.ts`, `MPCAccountManagerConfig`, or `CreateAccountResult`. Verified: features 1–5 all live above the MPC layer.
+5. **Standalone webauthn entry exposure** — only Features 1 (backupEligibility helper) and 4 (multi-RPID verify) touch `src/server/webauthn.ts`. Features 2, 3, 5 are router-only. Document this in the README "What's in standalone vs router" matrix.
+
+### Files Touched Summary (all 5 features)
+
+| File | F1 | F2 | F3 | F4 | F5 |
+|---|---|---|---|---|---|
+| `src/types/index.ts` | mod | mod | mod | mod | mod |
+| `src/server/index.ts` | — | mod | mod | — | mod |
+| `src/server/router.ts` | mod | mod | mod | — | mod |
+| `src/server/passkey.ts` | — | — | — | mod | — |
+| `src/server/webauthn.ts` | mod | — | — | mod | — |
+| `src/server/oauth/router.ts` | — | — | — | — | mod |
+| `src/server/backup.ts` (new) | NEW | — | — | — | — |
+| `src/server/analytics.ts` (new) | — | — | — | — | NEW |
+| `src/client/api.ts` | mod | (opt) | (opt) | — | — |
+| `src/client/hooks/useAnonAuth.tsx` | mod | (opt) | (opt) | — | — |
+| `src/server/db/adapters/postgres.ts` | — | — | — | — | — |
+| `src/server/validation/schemas.ts` | — | — | — | — | — |
+
+No DB schema migration required (under the pass-through framing of F3; library-managed framing would add a `key_bundle` column — see Pitfalls 3-A).
+No validation schema changes (request bodies don't change).
+
+---
+
+## Files Read for This Analysis
+
+- `.planning/PROJECT.md`
+- `.planning/codebase/ARCHITECTURE.md`
+- `src/server/index.ts`
+- `src/server/router.ts`
+- `src/server/passkey.ts`
+- `src/server/webauthn.ts`
+- `src/server/validation/schemas.ts`
+- `src/server/db/adapters/postgres.ts`
+- `src/server/oauth/router.ts` (route shape only)
+- `src/types/index.ts`
+- `src/client/index.ts`
+- `src/client/api.ts`
+- `src/client/passkey.ts`
+- `src/client/hooks/useAnonAuth.tsx`
+- `src/webauthn/index.ts`
+- `package.json`
