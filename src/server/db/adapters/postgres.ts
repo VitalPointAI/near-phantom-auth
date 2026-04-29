@@ -645,6 +645,14 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
       );
     },
 
+    async updatePasskeyBackedUp(credentialId: string, backedUp: boolean): Promise<void> {
+      const p = await getPool();
+      await p.query(
+        'UPDATE anon_passkeys SET backed_up = $1 WHERE credential_id = $2',
+        [backedUp, credentialId]
+      );
+    },
+
     async deletePasskey(credentialId: string): Promise<void> {
       const p = await getPool();
       await p.query('DELETE FROM anon_passkeys WHERE credential_id = $1', [credentialId]);

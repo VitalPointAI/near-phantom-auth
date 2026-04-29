@@ -295,6 +295,12 @@ export interface DatabaseAdapter {
   cleanExpiredChallenges?(): Promise<number>;
   /** Optional: clean expired OAuth states. Returns count deleted. */
   cleanExpiredOAuthStates?(): Promise<number>;
+
+  /** Optional: persist the backed_up (BS bit) flag on a passkey record on every login.
+   *  If not implemented, the BS bit re-read at login is reflected in the
+   *  response body but NOT persisted; the next session start will see the
+   *  stale stored value. Custom adapters that don't need persistence may omit this. */
+  updatePasskeyBackedUp?(credentialId: string, backedUp: boolean): Promise<void>;
 }
 
 // ============================================
