@@ -95,7 +95,12 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. An attacker on `evil.com` forging an assertion with a spoofed `clientDataJSON.origin` against a multi-RP_ID-enabled instance gets `verified: false` from `verifyAuthenticationResponse` — the paired tuple is preserved by index through to `@simplewebauthn/server`.
   4. A consumer importing standalone `verifyRegistration()` / `verifyAuthentication()` can pass `expectedRPID` and `expectedOrigin` as `string | string[]`; the existing `string` form continues to compile and verify identically (backwards compat).
   5. A consumer reading the README finds the `/.well-known/webauthn` consumer responsibility documented (library does NOT auto-host) with links to passkeys.dev and the W3C Passkey Endpoints spec, plus a copy-pasteable JSON skeleton.
-**Plans**: TBD
+**Plans:** 4 plans across 3 waves
+
+- [ ] 12-01-PLAN.md (Wave 1) — RPID-01 type foundation: RelatedOrigin paired-tuple interface, AnonAuthConfig.rp.relatedOrigins?: optional field, /server re-export, exports.test.ts regression
+- [ ] 12-02-PLAN.md (Wave 2) — RPID-02 startup-validator helper: pure-function validateRelatedOrigins (https-only, no wildcards, suffix-domain boundary, max 5, duplicate-of-primary) + Wave-0 unit tests (>=12 it() blocks)
+- [ ] 12-03-PLAN.md (Wave 2) — RPID-04 standalone exports: widen VerifyRegistrationInput / VerifyAuthenticationInput expectedOrigin and expectedRPID to string | string[]; positive compile fixtures
+- [ ] 12-04-PLAN.md (Wave 3) — RPID-03 + RPID-05 integration: PasskeyConfig.relatedOrigins, createAnonAuth startup-validate, conditional-spread idiom in passkey.ts (preserves string form when empty), README Cross-Domain Passkeys (v0.7.0) section
 
 ### Phase 13: Registration Analytics Hook
 **Milestone:** v0.7.0
