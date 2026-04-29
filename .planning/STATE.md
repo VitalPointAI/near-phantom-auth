@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
-stopped_at: ROADMAP.md created; 30 v1 requirements mapped to Phases 11–16; STATE.md updated; REQUIREMENTS.md traceability filled.
-last_updated: "2026-04-29T16:40:13.400Z"
+stopped_at: "Completed 11-03-PLAN.md: verifyRegistration() backupEligible field + JSDoc BE/BS lifecycle"
+last_updated: "2026-04-29T19:49:19.857Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
-  percent: 33
+  completed_plans: 3
+  percent: 50
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 11 (backup-eligibility-flags-hooks-scaffolding) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-04-29
 
@@ -57,6 +57,7 @@ Last activity: 2026-04-29
 - Trend: Sequential clean execution after worktree-base-mismatch + sandbox issues recovered in Phase 10
 
 *Updated after each plan completion*
+| Phase 11 P03 | 5min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Init]: Make new DatabaseAdapter methods optional with internal fallbacks to avoid hard breaking changes (Phase 5) — but pass-through F3 framing means NO new adapter methods in v0.7.0
 - [Init]: zod for runtime validation (Phase 2)
 - [Init]: pino externalized in tsup.config.ts (Phase 3-01) — consumers provide their own pino instance
+- [Phase 11]: backupEligible placed between backedUp and transports in verifyRegistration() credential shape — semantic adjacency, existing field order preserved — Mirrors plan spec for BACKUP-03; field-level JSDoc on each of deviceType/backedUp/backupEligible chosen over function-level only (Pitfall 7 defense at call-site)
 
 ### Roadmap Evolution
 
@@ -135,6 +137,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-29T16:40:13.393Z
-Stopped at: ROADMAP.md created; 30 v1 requirements mapped to Phases 11–16; STATE.md updated; REQUIREMENTS.md traceability filled.
+Last session: 2026-04-29T19:49:19.849Z
+Stopped at: Completed 11-03-PLAN.md: verifyRegistration() backupEligible field + JSDoc BE/BS lifecycle
 Resume file: None

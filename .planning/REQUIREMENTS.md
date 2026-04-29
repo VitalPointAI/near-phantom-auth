@@ -18,7 +18,7 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 
 - [ ] **BACKUP-01**: `/register/finish` response includes `passkey: { backedUp: boolean; backupEligible: boolean }` (additive optional nested key); existing fields unchanged.
 - [ ] **BACKUP-02**: `/login/finish` response includes the same `passkey: { backedUp; backupEligible }` shape; library re-reads `backedUp` from the assertion (BS bit can flip 0→1 over the credential lifetime) and persists fresh value to `anon_passkeys.backed_up` on each successful login.
-- [ ] **BACKUP-03**: Standalone `verifyRegistration()` (`src/server/webauthn.ts`) returns `credential.backupEligible` (computed `deviceType === 'multiDevice'`) alongside existing `credential.backedUp`; documented in JSDoc.
+- [x] **BACKUP-03**: Standalone `verifyRegistration()` (`src/server/webauthn.ts`) returns `credential.backupEligible` (computed `deviceType === 'multiDevice'`) alongside existing `credential.backedUp`; documented in JSDoc.
 - [ ] **BACKUP-04**: React `useAnonAuth` hook surfaces `passkeyBackedUp: boolean | null` and `passkeyBackupEligible: boolean | null` on `AnonAuthState`; populated from `register()` and `login()` response.
 - [x] **BACKUP-05**: Internal `deriveBackupEligibility(passkeyData)` helper in `src/server/backup.ts` is the single source of truth for the deviceType→backupEligible mapping; used by both router and standalone webauthn entry.
 
@@ -116,7 +116,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | BACKUP-01 | Phase 11 | Pending |
 | BACKUP-02 | Phase 11 | Pending |
-| BACKUP-03 | Phase 11 | Pending |
+| BACKUP-03 | Phase 11 | Complete |
 | BACKUP-04 | Phase 11 | Pending |
 | BACKUP-05 | Phase 11 | Complete |
 | HOOK-01 | Phase 11 | Complete |
