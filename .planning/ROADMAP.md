@@ -52,7 +52,7 @@ Surgical hotfix for the v0.6.0 production bug where `MPCAccountManager` was `exp
 
 Additive minor bump exposing five consumer-facing extension points: backup-eligibility flag exposure, second-factor enrolment hook (`hooks.afterAuthSuccess`, fires on passkey AND OAuth), lazy-backfill hook for pre-v0.6.0 NULL-bundle accounts (pass-through framing — library does NOT touch its schema), multi-RP_ID verification (cross-domain passkey support), and a privacy-preserving registration analytics hook (`hooks.onAuthEvent`). 30 v1 requirements across 6 phases. **Anonymity invariant non-negotiable. `MPCAccountManager` contract FROZEN. Zero new dependencies.**
 
-- [ ] **Phase 11: Backup-Eligibility Flags + Hooks Scaffolding** (TBD plans) — surfaces `passkey: { backedUp, backupEligible }` on register/login responses; lands shared `AnonAuthConfig.hooks` callback-object type that F2/F3/F5 plug into
+- [ ] **Phase 11: Backup-Eligibility Flags + Hooks Scaffolding** (6 plans) — surfaces `passkey: { backedUp, backupEligible }` on register/login responses; lands shared `AnonAuthConfig.hooks` callback-object type that F2/F3/F5 plug into
 - [ ] **Phase 12: Multi-RP_ID Verification** (TBD plans) — `rp.relatedOrigins` paired-tuple config; `expectedOrigin` / `expectedRPID` widened to array form; R3 origin-spoofing defense (startup validation, max 5 entries)
 - [ ] **Phase 13: Registration Analytics Hook** (TBD plans) — `hooks.onAuthEvent` fire-and-forget callback with type-level PII whitelist; tsc-fail fixture (R2 highest-priority defense, lands before F2/F3 so subsequent phases are tested against it); `awaitAnalytics: boolean` opt-in
 - [ ] **Phase 14: Second-Factor Enrolment Hook** (TBD plans) — `hooks.afterAuthSuccess` fires inline inside transaction, blocks session creation, on passkey-register / passkey-login / oauth-callback (3 instrumentation sites); MPC-funded-but-rolled-back trade-off documented
@@ -76,7 +76,13 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. A consumer importing the standalone `verifyRegistration()` from `/server` sees `credential.backupEligible` (computed `deviceType === 'multiDevice'`) on the result, with JSDoc documenting the BE/BS lifecycle.
   4. A React consumer using `useAnonAuth` reads `passkeyBackedUp` and `passkeyBackupEligible` (both `boolean | null`) from `AnonAuthState` after `register()` or `login()` resolves.
   5. A consumer who passes `hooks: {}` (or omits the field) to `createAnonAuth` sees behavior byte-identical to v0.6.1 — `AnonAuthConfig.hooks` is fully optional and absent hooks short-circuit.
-**Plans**: TBD
+**Plans:** 6 plans
+- [ ] 11-01-PLAN.md — BACKUP-05 helper + types: deriveBackupEligibility helper, unit tests, RegistrationFinishResponse/AuthenticationFinishResponse passkey? extension
+- [ ] 11-02-PLAN.md — HOOK-01 scaffolding: AnonAuthHooks type, AnonAuthConfig.hooks?, threading through createRouter + createOAuthRouter, Wave 0 hooks-scaffolding test (compile fixtures + grep guard)
+- [ ] 11-03-PLAN.md — BACKUP-03 standalone webauthn surface: verifyRegistration() result.credential.backupEligible + BE/BS JSDoc
+- [ ] 11-04-PLAN.md — BACKUP-01 register response: /register/finish passkey: { backedUp, backupEligible } + supertest
+- [ ] 11-05-PLAN.md — BACKUP-02 login response + DB persistence: passkey.ts:finishAuthentication FRESH read + optional updatePasskeyBackedUp adapter, /login/finish response, BS-bit-flip-on-login test
+- [ ] 11-06-PLAN.md — BACKUP-04 React state: useAnonAuth AnonAuthState gains passkeyBackedUp + passkeyBackupEligible (boolean | null)
 
 ### Phase 12: Multi-RP_ID Verification
 **Milestone:** v0.7.0
@@ -155,7 +161,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 8. Wire OAuth Callback DB State | v0.5.x | 1/1 | Complete | 2026-03-15 |
 | 9. WebAuthn PRF Extension | v0.6.0 | 3/3 | Complete | 2026-03-15 |
 | 10. MPCAccountManager | v0.6.1 | 6/6 | Complete | 2026-04-29 |
-| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 0/TBD | Not started | - |
+| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 0/6 | Not started | - |
 | 12. Multi-RP_ID Verification | v0.7.0 | 0/TBD | Not started | - |
 | 13. Registration Analytics Hook | v0.7.0 | 0/TBD | Not started | - |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |
