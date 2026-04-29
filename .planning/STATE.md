@@ -4,14 +4,14 @@ milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
 stopped_at: "Completed 11-03-PLAN.md: verifyRegistration() backupEligible field + JSDoc BE/BS lifecycle"
-last_updated: "2026-04-29T19:49:19.857Z"
+last_updated: "2026-04-29T20:04:25.035Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 11 (backup-eligibility-flags-hooks-scaffolding) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-04-29
 
@@ -58,6 +58,7 @@ Last activity: 2026-04-29
 
 *Updated after each plan completion*
 | Phase 11 P03 | 5min | 1 tasks | 1 files |
+| Phase 11 P04 | 9min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Init]: zod for runtime validation (Phase 2)
 - [Init]: pino externalized in tsup.config.ts (Phase 3-01) — consumers provide their own pino instance
 - [Phase 11]: backupEligible placed between backedUp and transports in verifyRegistration() credential shape — semantic adjacency, existing field order preserved — Mirrors plan spec for BACKUP-03; field-level JSDoc on each of deviceType/backedUp/backupEligible chosen over function-level only (Pitfall 7 defense at call-site)
+- [Phase ?]: passkey field appended at END of /register/finish literal per Pattern S4 (additive, no reorder)
 
 ### Roadmap Evolution
 
@@ -137,6 +139,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-29T19:49:19.849Z
+Last session: 2026-04-29T20:04:25.030Z
 Stopped at: Completed 11-03-PLAN.md: verifyRegistration() backupEligible field + JSDoc BE/BS lifecycle
 Resume file: None
