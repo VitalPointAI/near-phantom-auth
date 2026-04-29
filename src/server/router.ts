@@ -295,7 +295,7 @@ export function createRouter(config: RouterConfig): Router {
 
       const { challengeId, response } = body;
 
-      const { verified, userId } = await passkeyManager.finishAuthentication(
+      const { verified, userId, passkeyData } = await passkeyManager.finishAuthentication(
         challengeId,
         response
       );
@@ -316,9 +316,18 @@ export function createRouter(config: RouterConfig): Router {
         userAgent: req.headers['user-agent'],
       });
 
+      // Per D-LOGIN-NEARACCOUNTID: keep existing { success, codename } shape — do NOT add nearAccountId.
+      // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
+      // path with no passkeyData still returns a valid { success, codename } response.
       res.json({
         success: true,
         codename: user.codename,
+        ...(passkeyData && {
+          passkey: {
+            backedUp: passkeyData.backedUp,
+            backupEligible: deriveBackupEligibility(passkeyData.deviceType),
+          },
+        }),
       });
     } catch (error) {
       log.error({ err: error }, 'Login finish error');
