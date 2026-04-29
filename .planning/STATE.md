@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: verifying
+status: ready_to_plan
 stopped_at: "Completed 11-06-PLAN.md: BACKUP-04 AnonAuthState passkeyBackedUp + passkeyBackupEligible"
 last_updated: "2026-04-29T20:42:41.032Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
   completed_plans: 6
-  percent: 100
+  percent: 33
 ---
 
 # Project State
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 ## Current Position
 
-Phase: 11 (backup-eligibility-flags-hooks-scaffolding) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
+Phase: 12
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-04-29
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
+- Total plans completed: 15 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
 - Average duration: -
 - Total execution time: 0 hours (v0.7.0 not started)
 
@@ -44,7 +44,7 @@ Last activity: 2026-04-29
 |-------|-------|-------|----------|
 | 09 | 3 | - | - |
 | 10 | 6 | - | - |
-| 11 | TBD | - | - |
+| 11 | 6 | - | - |
 | 12 | TBD | - | - |
 | 13 | TBD | - | - |
 | 14 | TBD | - | - |

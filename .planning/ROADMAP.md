@@ -161,7 +161,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 8. Wire OAuth Callback DB State | v0.5.x | 1/1 | Complete | 2026-03-15 |
 | 9. WebAuthn PRF Extension | v0.6.0 | 3/3 | Complete | 2026-03-15 |
 | 10. MPCAccountManager | v0.6.1 | 6/6 | Complete | 2026-04-29 |
-| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete   | 2026-04-29 |
+| 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete    | 2026-04-29 |
 | 12. Multi-RP_ID Verification | v0.7.0 | 0/TBD | Not started | - |
 | 13. Registration Analytics Hook | v0.7.0 | 0/TBD | Not started | - |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |
