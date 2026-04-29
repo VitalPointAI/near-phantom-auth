@@ -12,22 +12,27 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 **Shipped version: v0.6.1** (2026-04-29) — `@vitalpoint/near-phantom-auth@0.6.1` is live on the npm registry.
 
-**v0.6.1 closed:** Phase 10 (MPCAccountManager hotfix) — surgical fix for the `export type`-stripped class that was causing the Ledgera mpc-sidecar restart loop. All 12 MPC-* requirements satisfied; fresh-consumer smoke install confirms `typeof MPCAccountManager === 'function'`. The downstream consumer is unblocked.
+**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (defining requirements).
 
-## Next Milestone Goals
+## Current Milestone: v0.7.0 Consumer Hooks & Recovery Hardening
 
-**v0.7.0 candidates (deferred to next milestone cycle — run `/gsd-new-milestone` to formalize):**
+**Goal:** Expose backup-eligibility, post-passkey 2FA, multi-RP_ID, and analytics hooks for consumers, plus a lazy-backfill path for pre-v0.6.0 accounts with NULL key bundles.
+
+**Target features:**
 - Backup-eligibility flag exposure on `register()` / `login()` results
 - Second-factor enrolment hook (consumer-defined post-passkey step)
 - Lazy-backfill hook for pre-v0.6.0 accounts with NULL key bundles
 - Multi-RP_ID verification (cross-domain passkey support)
 - Registration analytics hook (without compromising anonymity)
 
-**Carry-over from v0.6.0 PRF milestone (recorded in `STATE.md > Deferred Items`):**
+**Constraints carried into this milestone:**
+- Additive only — the `MPCAccountManager` contract is FROZEN by consumer pin; no field/method/return-shape renames
+- Anonymity invariant must hold — the registration analytics hook cannot leak PII
+- Next semver bump: minor (v0.7.0) — new public surface, backwards compatible
+
+**Carry-over from v0.6.0 PRF milestone (NOT in this milestone's scope — see `STATE.md > Deferred Items`):**
 - 6 cross-browser PRF UAT scenarios (Firefox, Safari, hardware keys) — needs physical devices
 - 1 verification gap on Phase 09 (`human_needed` until PRF UAT clears)
-
-These are independent of the v0.7.0 scope but should be cleared before v0.7.0 ships if they touch the same code paths.
 
 ## Requirements
 
@@ -87,13 +92,16 @@ These are independent of the v0.7.0 scope but should be cleared before v0.7.0 sh
 
 ### Active
 
-<!-- v0.6.1 has shipped. Next milestone goals listed under "Next Milestone Goals" above. -->
+<!-- v0.7.0 scope. REQ-IDs assigned in REQUIREMENTS.md after roadmap approval. -->
 
-No active requirements. Run `/gsd-new-milestone` to define the v0.7.0 scope.
+- Backup-eligibility flag exposure on `register()` / `login()` results
+- Second-factor enrolment hook (consumer-defined post-passkey step)
+- Lazy-backfill hook for pre-v0.6.0 accounts with NULL key bundles
+- Multi-RP_ID verification (cross-domain passkey support)
+- Registration analytics hook (without compromising anonymity)
 
 ### Out of Scope
 
-- **v0.7.0 forward-looking items (deferred to next milestone):** backup-eligibility flag exposure, second-factor enrolment hook, lazy-backfill hook, multi-RP_ID verification, registration analytics hook
 - Renaming any field, method, or return-shape key on `MPCAccountManager` — contract is FROZEN by consumer pin (would require coordinated PR)
 - Returning named accounts (e.g. `user.namespace.near`) from `createAccount` — consumer's contract test greps for `/^[a-f0-9]{64}$/`; named-account support would be a major-version break
 - Performing signature verification inside `verifyRecoveryWallet` — consumer's two-step flow runs `tweetnacl.sign.detached.verify` after; keep separate so consumer can swap signature library
@@ -161,4 +169,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 after v0.6.1 milestone — `@vitalpoint/near-phantom-auth@0.6.1` published to npm; Ledgera mpc-sidecar restart loop closed end-to-end. v0.7.0 candidates listed under "Next Milestone Goals"; run `/gsd-new-milestone` to define scope.*
+*Last updated: 2026-04-29 — v0.7.0 milestone "Consumer Hooks & Recovery Hardening" started; defining requirements. Last shipped: v0.6.1 (2026-04-29).*

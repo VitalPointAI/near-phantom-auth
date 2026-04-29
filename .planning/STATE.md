@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.6.1
-milestone_name: MPCAccountManager hotfix
-status: completed
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-29T13:05:08.240Z"
+milestone: v0.7.0
+milestone_name: Consumer Hooks & Recovery Hardening
+status: planning
+last_updated: "2026-04-29T14:17:18.644Z"
 last_activity: 2026-04-29
 progress:
-  total_phases: 10
-  completed_phases: 10
-  total_plans: 31
-  completed_plans: 31
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-04-28)
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-04-29
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-29 — Milestone v0.7.0 started
 
 ## Performance Metrics
 
