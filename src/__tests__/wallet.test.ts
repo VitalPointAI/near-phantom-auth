@@ -167,15 +167,12 @@ describe('checkWalletAccess', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when fetch throws (network failure)', async () => {
+  it('throws when fetch fails (RPC unreachable — MPC-10 propagation)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
 
-    const result = await checkWalletAccess(
-      'alice.testnet',
-      'ed25519:somePublicKey',
-      'testnet'
-    );
-    expect(result).toBe(false);
+    await expect(
+      checkWalletAccess('alice.testnet', 'ed25519:somePublicKey', 'testnet')
+    ).rejects.toThrow('Network error');
   });
 
   it('uses mainnet RPC URL when networkId is mainnet', async () => {
@@ -190,6 +187,69 @@ describe('checkWalletAccess', () => {
       'https://rpc.mainnet.near.org',
       expect.any(Object)
     );
+  });
+});
+
+// ============================================
+// checkWalletAccess — MPC-05: FullAccess permission gate
+// ============================================
+
+describe('checkWalletAccess — MPC-05: FullAccess permission gate', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns false for FunctionCall-only permission (security gate — not FullAccess)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        result: {
+          nonce: 5,
+          permission: {
+            FunctionCall: {
+              allowance: '1000000000000000000000000',
+              receiver_id: 'app.testnet',
+              method_names: [],
+            },
+          },
+          block_height: 1,
+        },
+      }),
+    }));
+
+    const result = await checkWalletAccess(
+      'alice.testnet',
+      'ed25519:functionCallKey',
+      'testnet'
+    );
+    expect(result).toBe(false);
+  });
+
+  it('returns true when access key is FullAccess (regression — existing behavior preserved)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        result: { nonce: 0, permission: 'FullAccess', block_height: 1 },
+      }),
+    }));
+
+    const result = await checkWalletAccess(
+      'alice.testnet',
+      'ed25519:fullAccessKey',
+      'testnet'
+    );
+    expect(result).toBe(true);
+  });
+
+  it('returns false (does not throw) when account is deleted (UNKNOWN_ACCOUNT — MPC-04)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({
+        error: { cause: { name: 'UNKNOWN_ACCOUNT' }, code: -32000 },
+      }),
+    }));
+
+    const result = await checkWalletAccess(
+      'deleted.testnet',
+      'ed25519:anyKey',
+      'testnet'
+    );
+    expect(result).toBe(false);
   });
 });
 

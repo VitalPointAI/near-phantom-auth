@@ -86,32 +86,42 @@ export async function checkWalletAccess(
   walletPublicKey: string,
   networkId: 'testnet' | 'mainnet'
 ): Promise<boolean> {
-  try {
-    const rpcUrl = networkId === 'mainnet'
-      ? 'https://rpc.mainnet.near.org'
-      : 'https://rpc.testnet.near.org';
+  const rpcUrl = networkId === 'mainnet'
+    ? 'https://rpc.mainnet.near.org'
+    : 'https://rpc.testnet.near.org';
 
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'check-access-key',
-        method: 'query',
-        params: {
-          request_type: 'view_access_key',
-          finality: 'final',
-          account_id: nearAccountId,
-          public_key: walletPublicKey,
-        },
-      }),
-    });
+  // No outer try/catch — fetch() throws (RPC unreachable) propagate to caller
+  // per MPC-10. The mpc.ts verifyRecoveryWallet wrapper decides whether to
+  // surface the throw or swallow it.
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'check-access-key',
+      method: 'query',
+      params: {
+        request_type: 'view_access_key',
+        finality: 'final',
+        account_id: nearAccountId,
+        public_key: walletPublicKey,
+      },
+    }),
+  });
 
-    const result = await response.json() as { error?: unknown };
-    return !result.error;
-  } catch {
-    return false;
-  }
+  // Type the response shape per @near-js/types AccessKeyViewRaw
+  const result = await response.json() as {
+    result?: { permission: 'FullAccess' | { FunctionCall: unknown }; nonce?: number; block_height?: number };
+    error?: unknown;
+  };
+
+  // MPC-04: UNKNOWN_ACCOUNT (deleted account) or UNKNOWN_ACCESS_KEY (key not on account)
+  // surface as result.error — return false without throwing.
+  if (result.error || !result.result) return false;
+
+  // MPC-05: gate on FullAccess. FunctionCall-only keys cannot sign arbitrary
+  // transactions and must NOT satisfy recovery verification.
+  return result.result.permission === 'FullAccess';
 }
 
 /**
