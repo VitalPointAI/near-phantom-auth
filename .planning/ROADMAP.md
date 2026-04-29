@@ -197,7 +197,7 @@ Plans:
 
 **Phases:**
 
-- [ ] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class (createAccount + verifyRecoveryWallet) with idempotency, nonce safety, treasury key redaction, T1-T12 test coverage, and npm publish v0.6.1
+- [x] **Phase 10: MPCAccountManager** - Ship the missing MPCAccountManager class (createAccount + verifyRecoveryWallet) with idempotency, nonce safety, treasury key redaction, T1-T12 test coverage, and npm publish v0.6.1 (completed 2026-04-29)
 
 ### Phase 10: MPCAccountManager
 
@@ -227,4 +227,4 @@ Phase 10 is the sole phase of milestone v0.6.1.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. MPCAccountManager | 6/6 | Complete   | 2026-04-29 |
+| 10. MPCAccountManager | 6/6 | Complete    | 2026-04-29 |
