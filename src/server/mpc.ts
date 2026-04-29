@@ -397,7 +397,21 @@ export class MPCAccountManager {
     }
     this.fundingAmount = config.fundingAmount || '0.01';
     this.derivationSalt = config.derivationSalt;
-    this.log = (config.logger ?? pino({ level: 'silent' })).child({ module: 'mpc' });
+    // MPC-09: Default silent logger includes redact paths so an accidental
+    // log.info({ config }, '...') anywhere in the codebase emits '[Redacted]'
+    // instead of the treasury private key. Consumers who pass their own logger
+    // should mirror these redact paths in their pino config.
+    this.log = (config.logger ?? pino({
+      level: 'silent',
+      redact: {
+        paths: [
+          'config.treasuryPrivateKey',
+          '*.treasuryPrivateKey',
+          'treasuryPrivateKey',
+        ],
+        censor: '[Redacted]',
+      },
+    })).child({ module: 'mpc' });
   }
 
   /**
