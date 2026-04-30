@@ -4,14 +4,14 @@ milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
 stopped_at: "Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)"
-last_updated: "2026-04-30T02:40:52.943Z"
+last_updated: "2026-04-30T02:58:12.032Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 12
-  percent: 80
+  completed_plans: 13
+  percent: 87
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 13 (registration-analytics-hook) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-04-30
 
@@ -63,6 +63,7 @@ Last activity: 2026-04-30
 | Phase 11 P06 | 2min | 1 tasks | 1 files |
 | Phase 13 P01 | 3min | 2 tasks | 6 files |
 | Phase 13 P02 | 14min | 5 tasks | 8 files |
+| Phase 13 P03 | 11m | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase ?]: [Phase 13]: AnalyticsEvent union lives in src/server/analytics.ts (not types/index.ts) — co-located with runtime helpers (ALLOWED_EVENT_FIELDS, wrapAnalytics, redactErrorMessage); types/index.ts imports the union for AnonAuthHooks.onAuthEvent narrowing. Mirrors MPCAccountManagerConfig precedent in src/server/mpc.ts.
 - [Phase ?]: [Phase 13]: awaitAnalytics?: boolean placed at TOP LEVEL of AnonAuthConfig (sibling of hooks), NOT nested under hooks. Locked decision per REQUIREMENTS line 11; controls library behavior, not hook behavior.
 - [Phase ?]: [Phase 13]: tsc-fail fixture in analytics-pii-leak.test.ts uses ForbiddenCase interface (not as-const tuple) to make extraPrefix optional across union members; variant strings template-interpolated into fixture source, so loss of literal narrowing is acceptable.
+- [Phase ?]: [Phase 13]: emit closure captured ONCE at createRouter() factory entry (Pitfall 2 — never per-request); 15 inline emit() call sites across all 11 unique lifecycle event variants; static-enum reasons at every catch site (NEVER Error.message); login.start emits boolean codenameProvided, never codename string.
+- [Phase ?]: [Phase 13]: analytics-lifecycle.test.ts mock harness mirrors registration-auth.test.ts + recovery.test.ts verbatim — onAuthEvent vi.fn() spy passed via hooks, findEvent(spy, type) helper + expectNoPII(event) defense-in-depth scan for 6 forbidden PII keys. Sets canonical pattern for Plan 04 (OAuth) + Plan 05 (latency) test harnesses.
 
 ### Roadmap Evolution
 
@@ -148,6 +151,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-30T02:38:09.113Z
+Last session: 2026-04-30T02:57:26.707Z
 Stopped at: Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)
 Resume file: None
