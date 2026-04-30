@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: executing
-stopped_at: Phase 16 release prep executed through local smoke install and npm publish dry-run. Waiting on manual npm publish, registry smoke, and git tag push.
-last_updated: "2026-04-30T16:30:00.000Z"
-last_activity: 2026-04-30 -- Phase 16 paused at publish checkpoint
+status: complete
+stopped_at: Phase 17 executed and verified. No active phase pending.
+last_updated: "2026-04-30T19:00:00.000Z"
+last_activity: 2026-04-30 -- Phase 17 complete
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 27
-  completed_plans: 26
-  percent: 96
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 31
+  completed_plans: 31
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 16 — release-prep
+**Current focus:** Phase 17 — session-metadata-anonymity-hardening complete
 
 ## Current Position
 
-Phase: 16 (release-prep) — CHECKPOINT
+Phase: 17 (session-metadata-anonymity-hardening) — COMPLETE
 Plan: 4 of 4
-Status: Waiting on manual npm publish, registry smoke, and git tag push
-Last activity: 2026-04-30 -- Phase 16 paused at publish checkpoint
+Status: Verified
+Last activity: 2026-04-30 -- Phase 17 complete
 
 ## Performance Metrics
 
@@ -74,6 +74,11 @@ Last activity: 2026-04-30 -- Phase 16 paused at publish checkpoint
 | Phase 16 P01 | - | 2 tasks | 2 files |
 | Phase 16 P02 | - | 3 tasks | package/dist |
 | Phase 16 P03 | - | 2 tasks | smoke |
+| Phase 16 P04 | - | publish/tag | npm/git |
+| Phase 17 P01 | - | 3 tasks | 3 files |
+| Phase 17 P02 | - | 3 tasks | 3 files |
+| Phase 17 P03 | - | 2 tasks | 3 files |
+| Phase 17 P04 | - | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -127,6 +132,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
   - Phase 14: Second-Factor Enrolment Hook (HOOK-02..06)
   - Phase 15: Lazy-Backfill Hook (BACKFILL-01..04)
   - Phase 16: Release Prep (RELEASE-01..04)
+- Phase 17 added: Session Metadata Anonymity Hardening — reduce linkability from session IP/user-agent storage via configurable omission, hashing, or truncation.
+- Phase 17 completed: `sessionMetadata` now supports independent IP/user-agent persistence policies (`store`, `omit`, `hash`, IP-only `truncate`), with README privacy-audit updates and analytics/logging PII regression guards.
+- Phase 17 verification: non-breaking production audit fixes updated transitive `fast-xml-parser` to 5.7.2 and `path-to-regexp` to 8.4.2 in `package-lock.json`; residual production audit finding remains in NEAR's `@near-js/crypto -> secp256k1 -> elliptic` chain, where npm's suggested fix is breaking.
 
 ### Pending Todos
 
@@ -165,6 +173,11 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 - Phase 12 — `@simplewebauthn/server@^13.2.3` already supports array form; paired-tuple is the only design decision.
 - Phase 13 — pattern established (Better Auth, Authsignal); type-level whitelist follows v0.6.1 MPC-07 tsc-fail pattern.
 - Phase 16 — standard close-out, done 3x before (v0.5.x informally, v0.6.0, v0.6.1).
+
+**Residual dependency audit note (2026-04-30):**
+
+- `npm audit --omit=dev` reports 7 low-severity advisories through `@near-js/crypto@2.5.1 -> secp256k1@5.0.1 -> elliptic@6.6.1`.
+- npm's available remediation is `npm audit fix --force`, which would install `@near-js/crypto@1.2.4` and is marked breaking. Do not apply automatically without a NEAR dependency compatibility pass.
 
 ## Session Continuity
 

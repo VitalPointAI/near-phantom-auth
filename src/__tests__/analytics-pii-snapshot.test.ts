@@ -35,8 +35,8 @@ describe('ANALYTICS-05: every event variant uses only allowed fields', () => {
     expect(ALLOWED_EVENT_FIELDS.size).toBe(expected.length);
   });
 
-  it('ALLOWED_EVENT_FIELDS rejects userId, codename, nearAccountId, email, ip, userAgent', () => {
-    const forbidden = ['userId', 'codename', 'nearAccountId', 'email', 'ip', 'userAgent'];
+  it('ALLOWED_EVENT_FIELDS rejects userId, codename, nearAccountId, email, ip, ipAddress, userAgent', () => {
+    const forbidden = ['userId', 'codename', 'nearAccountId', 'email', 'ip', 'ipAddress', 'userAgent'];
     for (const key of forbidden) {
       expect(ALLOWED_EVENT_FIELDS.has(key)).toBe(false);
     }

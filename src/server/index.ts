@@ -120,6 +120,7 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   const sessionManager = createSessionManager(db, {
     secret: config.sessionSecret,
     durationMs: config.sessionDurationMs,
+    metadata: config.sessionMetadata,
     logger,
   });
 

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { createRouter } from '../server/router.js';
+import { createSessionManager } from '../server/session.js';
 import type { DatabaseAdapter } from '../types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -353,6 +354,34 @@ describe('Registration flow', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.passkey).toEqual({ backedUp: false, backupEligible: false });
+  });
+});
+
+describe('Session metadata config boundary', () => {
+  it('real session manager strips raw request metadata before persistence when configured to omit', async () => {
+    const db = makeMockDb();
+    const sessionManager = createSessionManager(db, {
+      secret: 'test-secret-with-enough-entropy',
+      metadata: {
+        ipAddress: 'omit',
+        userAgent: 'omit',
+      },
+    });
+    const mockRes = {
+      cookie: vi.fn(),
+      clearCookie: vi.fn(),
+    };
+
+    await sessionManager.createSession('user-1', mockRes as never, {
+      ipAddress: '203.0.113.42',
+      userAgent: 'Mozilla/5.0',
+    });
+
+    expect(db.createSession).toHaveBeenCalledOnce();
+    expect((db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+      ipAddress: undefined,
+      userAgent: undefined,
+    });
   });
 });
 

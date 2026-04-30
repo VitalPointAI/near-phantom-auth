@@ -122,6 +122,20 @@ interface CsrfConfig {
     /** Secret for HMAC token signing. Must NOT be the same as sessionSecret. */
     secret: string;
 }
+type SessionMetadataIpPolicy = 'store' | 'omit' | 'hash' | 'truncate';
+type SessionMetadataUserAgentPolicy = 'store' | 'omit' | 'hash';
+interface SessionMetadataConfig {
+    /** IP address persistence policy. Default `store` preserves v0.7.0 behavior.
+     *  Use `omit` for maximum anonymous-track privacy. Use `hash` for
+     *  pseudonymous HMAC correlation, not anonymity. Use `truncate` for coarse
+     *  network analytics without storing a full raw IP address. */
+    ipAddress?: SessionMetadataIpPolicy;
+    /** User-agent persistence policy. Default `store` preserves v0.7.0 behavior.
+     *  Use `omit` for maximum anonymous-track privacy. Use `hash` for
+     *  pseudonymous HMAC correlation, not anonymity. User-agent truncation is not
+     *  supported because UA strings do not have a stable network-prefix analogue. */
+    userAgent?: SessionMetadataUserAgentPolicy;
+}
 /**
  * Optional consumer-facing hooks for extending auth lifecycle behavior.
  *
@@ -368,6 +382,12 @@ interface AnonAuthConfig {
     sessionSecret: string;
     /** Session duration in milliseconds (default: 7 days) */
     sessionDurationMs?: number;
+    /** Controls whether operational session metadata is stored raw, omitted, or
+     *  transformed before persistence. Absent config preserves current behavior
+     *  (`store`). For maximum anonymous-track privacy, set both fields to
+     *  `omit`. `hash` uses HMAC and remains pseudonymous/correlatable; `truncate`
+     *  applies only to IP addresses. */
+    sessionMetadata?: SessionMetadataConfig;
     /** Database configuration */
     database: DatabaseConfig;
     /** Codename generation style */
@@ -824,4 +844,4 @@ declare global {
     }
 }
 
-export type { AuthenticationStartResponse as A, BackfillKeyBundleCtx as B, CsrfConfig as C, DatabaseAdapter as D, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, Session as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, AuthenticatorTransport as f, Passkey as g, RelatedOrigin as h, RateLimitConfig as i, AnonAuthHooks as j, AnonAuthConfig as k, AfterAuthSuccessCtx as l, AfterAuthSuccessProvider as m, AfterAuthSuccessResult as n, AnalyticsEvent as o, AnonUser as p, BackfillKeyBundleResult as q, BackfillReason as r, OAuthProvider as s, OAuthUser as t, UserType as u, CodenameConfig as v, RecoveryConfig as w, RecoveryData as x, RecoveryType as y };
+export type { AuthenticationStartResponse as A, BackfillKeyBundleCtx as B, CsrfConfig as C, DatabaseAdapter as D, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, Session as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, SessionMetadataConfig as f, AuthenticatorTransport as g, Passkey as h, RelatedOrigin as i, RateLimitConfig as j, AnonAuthHooks as k, AnonAuthConfig as l, AfterAuthSuccessCtx as m, AfterAuthSuccessProvider as n, AfterAuthSuccessResult as o, AnalyticsEvent as p, AnonUser as q, BackfillKeyBundleResult as r, BackfillReason as s, OAuthProvider as t, OAuthUser as u, UserType as v, CodenameConfig as w, RecoveryConfig as x, RecoveryData as y, RecoveryType as z };

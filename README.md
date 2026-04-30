@@ -535,6 +535,11 @@ const auth = createAnonAuth({
   },
   // Recommended for production: prevents account ID prediction
   derivationSalt: process.env.DERIVATION_SALT!,
+  // Recommended for maximum anonymous-track privacy: omit session metadata
+  sessionMetadata: {
+    ipAddress: 'omit',
+    userAgent: 'omit',
+  },
   recovery: {
     wallet: true,
     ipfs: {
@@ -868,6 +873,10 @@ const auth = createAnonAuth({
 
   // === Session ===
   sessionDurationMs: 7 * 24 * 60 * 60 * 1000, // Default: 7 days
+  sessionMetadata: {
+    ipAddress: 'omit',             // 'store' (default), 'omit', 'hash', or 'truncate'
+    userAgent: 'omit',             // 'store' (default), 'omit', or 'hash'
+  },
 
   // === Codename Generation ===
   codename: {
@@ -1037,6 +1046,7 @@ For maximum security, we recommend using a hardware security key instead of plat
 - [ ] Set `sessionSecret` to a cryptographically random value (32+ bytes)
 - [ ] Enable `csrf` with a separate secret if your frontend is on a different origin
 - [ ] Configure `rateLimiting` thresholds appropriate for your traffic
+- [ ] Set `sessionMetadata` to `omit` or `hash` IP/user-agent data if your threat model treats operational metadata as identifying
 - [ ] Provide a `logger` instance with appropriate redaction for your environment
 - [ ] Run `createCleanupScheduler` to prevent expired record accumulation
 
@@ -1054,8 +1064,8 @@ This section documents exactly what the package stores, logs, and exposes for pa
 | Codename | Yes | Database | None - randomly generated from `crypto.randomBytes()` |
 | NEAR account ID | Yes | Database + Blockchain | None - derived from random UUID + salt |
 | Passkey public key | Yes | Database | None - device-generated, unlinkable |
-| Session IP address | Yes | Database (`anon_sessions`) | Operational - ephemeral, cleaned on session expiry |
-| Session user agent | Yes | Database (`anon_sessions`) | Operational - ephemeral, cleaned on session expiry |
+| Session IP address | Configurable | Database (`anon_sessions`) | Raw values only when `sessionMetadata.ipAddress` uses `store`; otherwise omitted, HMAC-hashed, or coarse-truncated |
+| Session user agent | Configurable | Database (`anon_sessions`) | Raw values only when `sessionMetadata.userAgent` uses `store`; otherwise omitted or HMAC-hashed |
 | Recovery wallet link | No | On-chain only | - |
 | IPFS backup CID | Yes | Database | None - content is AES-256-GCM encrypted |
 
@@ -1079,6 +1089,26 @@ This section documents exactly what the package stores, logs, and exposes for pa
 
 **Rate limiting is in-memory only**. IP addresses are used as rate limit keys by `express-rate-limit` but are never persisted to disk or database by the rate limiter. They exist only in the Node.js process memory for the duration of the rate limit window.
 
+### Session Metadata Policy
+
+`createAnonAuth({ sessionMetadata })` controls whether session IP addresses
+and user-agent strings are persisted:
+
+| Field | Policy | Stored value |
+|-------|--------|--------------|
+| `ipAddress` | `store` | Raw IP address. This is the backwards-compatible default. |
+| `ipAddress` | `omit` | No IP address is stored. Recommended for maximum anonymity. |
+| `ipAddress` | `hash` | Deterministic `hmac-sha256:<hex>` using `sessionSecret`; pseudonymous and still correlatable within the deployment. |
+| `ipAddress` | `truncate` | Coarse network only: IPv4 `/24` or IPv6 `/48`. Invalid IPs are omitted. |
+| `userAgent` | `store` | Raw user-agent string. This is the backwards-compatible default. |
+| `userAgent` | `omit` | No user-agent string is stored. Recommended for maximum anonymity. |
+| `userAgent` | `hash` | Deterministic `hmac-sha256:<hex>` using `sessionSecret`; pseudonymous and still correlatable within the deployment. |
+
+Use `omit` for both fields when operational session metadata is not required.
+Use `hash` only when you need same-source correlation without raw values.
+Use IP `truncate` when coarse abuse/debugging context is acceptable but raw
+addresses are not.
+
 ### Session IP and User Agent
 
 Session records include optional `ipAddress` and `userAgent` fields. These are standard Express operational metadata used for session security (detecting session hijacking, abuse patterns). They are:
@@ -1087,8 +1117,9 @@ Session records include optional `ipAddress` and `userAgent` fields. These are s
 - **Not exposed** - never returned in any API response
 - **Not logged** - not included in any log call
 - **Not linked to identity** - there is no identity to link to; the user record contains only a random UUID, random codename, and NEAR account
+- **Configurable** - raw storage is retained only for backwards compatibility; set `sessionMetadata` to omit, hash, or IP-truncate values before persistence
 
-With full database access, an attacker would see: a random UUID, a random codename, a NEAR account, and a list of session IPs. But there is no name, email, phone, or external identifier to connect any of it to a real person. The IP tells you a session came from an ISP - not who the person is.
+With full database access under the default `store` policy, an attacker would see: a random UUID, a random codename, a NEAR account, and a list of session IPs/user agents. But there is no name, email, phone, or external identifier to connect any of it to a real person. The IP tells you a session came from an ISP - not who the person is. For the strictest anonymous-track posture, configure `sessionMetadata: { ipAddress: 'omit', userAgent: 'omit' }` so those operational fields are not stored at all.
 
 ### Threat Model Summary
 

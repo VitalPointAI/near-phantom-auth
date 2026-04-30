@@ -1,4 +1,4 @@
-import { f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON, c as AuthenticationResponseJSON, a as RegistrationResponseJSON } from '../index-C-jQo7Jq.cjs';
+import { g as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON, c as AuthenticationResponseJSON, a as RegistrationResponseJSON } from '../index-DPBetoV8.cjs';
 import 'pino';
 import 'express';
 

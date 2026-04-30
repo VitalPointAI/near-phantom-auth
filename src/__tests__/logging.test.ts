@@ -106,3 +106,37 @@ describe('Sensitive field redaction (SEC-06)', () => {
     }
   });
 });
+
+// ============================================
+// Session metadata logging (SESSION-04)
+// ============================================
+
+describe('Session metadata logging', () => {
+  const serverDir = join(process.cwd(), 'src', 'server');
+
+  const readSource = (relativePath: string) =>
+    readFileSync(join(serverDir, relativePath), 'utf-8');
+
+  it('session.ts log calls never include raw session metadata names', () => {
+    const source = readSource('session.ts');
+    const logCalls = source.match(/log\.(info|warn|error|debug)\([^)]+\)/g) || [];
+    for (const call of logCalls) {
+      expect(call).not.toContain('ipAddress');
+      expect(call).not.toContain('userAgent');
+      expect(call).not.toContain('metadata.ipAddress');
+      expect(call).not.toContain('metadata.userAgent');
+    }
+  });
+
+  it('router log calls never include req.ip or raw user-agent header access', () => {
+    for (const file of ['router.ts', 'oauth/router.ts']) {
+      const source = readSource(file);
+      const logCalls = source.match(/log\.(info|warn|error|debug)\([^)]+\)/g) || [];
+      for (const call of logCalls) {
+        expect(call).not.toContain('req.ip');
+        expect(call).not.toContain("req.headers['user-agent']");
+        expect(call).not.toContain('req.headers["user-agent"]');
+      }
+    }
+  });
+});

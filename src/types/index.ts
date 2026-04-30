@@ -32,6 +32,22 @@ export interface CsrfConfig {
   secret: string;
 }
 
+export type SessionMetadataIpPolicy = 'store' | 'omit' | 'hash' | 'truncate';
+export type SessionMetadataUserAgentPolicy = 'store' | 'omit' | 'hash';
+
+export interface SessionMetadataConfig {
+  /** IP address persistence policy. Default `store` preserves v0.7.0 behavior.
+   *  Use `omit` for maximum anonymous-track privacy. Use `hash` for
+   *  pseudonymous HMAC correlation, not anonymity. Use `truncate` for coarse
+   *  network analytics without storing a full raw IP address. */
+  ipAddress?: SessionMetadataIpPolicy;
+  /** User-agent persistence policy. Default `store` preserves v0.7.0 behavior.
+   *  Use `omit` for maximum anonymous-track privacy. Use `hash` for
+   *  pseudonymous HMAC correlation, not anonymity. User-agent truncation is not
+   *  supported because UA strings do not have a stable network-prefix analogue. */
+  userAgent?: SessionMetadataUserAgentPolicy;
+}
+
 // ============================================
 // Hooks
 // ============================================
@@ -299,6 +315,13 @@ export interface AnonAuthConfig {
   
   /** Session duration in milliseconds (default: 7 days) */
   sessionDurationMs?: number;
+
+  /** Controls whether operational session metadata is stored raw, omitted, or
+   *  transformed before persistence. Absent config preserves current behavior
+   *  (`store`). For maximum anonymous-track privacy, set both fields to
+   *  `omit`. `hash` uses HMAC and remains pseudonymous/correlatable; `truncate`
+   *  applies only to IP addresses. */
+  sessionMetadata?: SessionMetadataConfig;
   
   /** Database configuration */
   database: DatabaseConfig;

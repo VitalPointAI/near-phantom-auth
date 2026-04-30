@@ -86,6 +86,41 @@ describe('HOOK-01: AnonAuthConfig.hooks is fully optional', () => {
   });
 });
 
+describe('SESSION-01: AnonAuthConfig.sessionMetadata is optional and threaded', () => {
+  it('accepts sessionMetadata and omits raw session metadata through createAnonAuth', async () => {
+    const db = makeMinimalDb();
+    (db.createSession as ReturnType<typeof vi.fn>).mockImplementation(async (input) => ({
+      id: (input as any).id ?? 'sess-1',
+      userId: (input as any).userId,
+      createdAt: new Date(),
+      expiresAt: (input as any).expiresAt,
+      lastActivityAt: new Date(),
+      ipAddress: (input as any).ipAddress,
+      userAgent: (input as any).userAgent,
+    }));
+
+    const cfg: AnonAuthConfig = {
+      ...baseConfig,
+      database: { type: 'custom', adapter: db },
+      sessionMetadata: {
+        ipAddress: 'omit',
+        userAgent: 'omit',
+      },
+    };
+
+    const auth = createAnonAuth(cfg);
+    await auth.sessionManager.createSession(
+      'user-1',
+      { cookie: vi.fn() } as never,
+      { ipAddress: '203.0.113.42', userAgent: 'Mozilla/5.0 test' }
+    );
+
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0] as any;
+    expect(input.ipAddress).toBeUndefined();
+    expect(input.userAgent).toBeUndefined();
+  });
+});
+
 describe('HOOK-01: hooks threaded through createAnonAuth (no call sites wired)', () => {
   it('createAnonAuth accepts hooks without invoking them at construction time', () => {
     const afterAuthSuccess = vi.fn();

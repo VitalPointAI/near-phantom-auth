@@ -40,6 +40,7 @@ const forbiddenCases: ForbiddenCase[] = [
   { field: 'nearAccountId', variant: 'login.finish.success', extraPrefix: 'backupEligible: false,', extra: "nearAccountId: 'alice.testnet'" },
   { field: 'email', variant: 'oauth.callback.success', extraPrefix: "provider: 'google',", extra: "email: 'alice@example.com'" },
   { field: 'ip', variant: 'account.delete', extra: "ip: '127.0.0.1'" },
+  { field: 'ipAddress', variant: 'login.start', extraPrefix: 'codenameProvided: true,', extra: "ipAddress: '203.0.113.42'" },
   { field: 'userAgent', variant: 'recovery.wallet.link.success', extra: "userAgent: 'Mozilla/5.0'" },
 ];
 

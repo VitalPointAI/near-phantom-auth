@@ -1,6 +1,6 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, h as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, i as RateLimitConfig, C as CsrfConfig, j as AnonAuthHooks, k as AnonAuthConfig } from '../index-C-jQo7Jq.js';
-export { l as AfterAuthSuccessCtx, m as AfterAuthSuccessProvider, n as AfterAuthSuccessResult, o as AnalyticsEvent, p as AnonUser, B as BackfillKeyBundleCtx, q as BackfillKeyBundleResult, r as BackfillReason, s as OAuthProvider, t as OAuthUser, U as User, u as UserType } from '../index-C-jQo7Jq.js';
+import { S as Session, f as SessionMetadataConfig, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, g as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, h as Passkey, i as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, j as RateLimitConfig, C as CsrfConfig, k as AnonAuthHooks, l as AnonAuthConfig } from '../index-DPBetoV8.js';
+export { m as AfterAuthSuccessCtx, n as AfterAuthSuccessProvider, o as AfterAuthSuccessResult, p as AnalyticsEvent, q as AnonUser, B as BackfillKeyBundleCtx, r as BackfillKeyBundleResult, s as BackfillReason, t as OAuthProvider, u as OAuthUser, U as User, v as UserType } from '../index-DPBetoV8.js';
 import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.js';
 
@@ -26,6 +26,8 @@ interface SessionConfig {
     secure?: boolean;
     /** SameSite setting (default: strict) */
     sameSite?: 'strict' | 'lax' | 'none';
+    /** Controls raw, omitted, hashed, or truncated session metadata persistence. */
+    metadata?: SessionMetadataConfig;
     /** Optional pino logger instance. If omitted, logging is disabled (no output). */
     logger?: Logger;
 }

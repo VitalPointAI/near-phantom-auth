@@ -86,6 +86,102 @@ const TEST_SECRET = 'test-session-secret-at-least-32-chars-long';
 const COOKIE_NAME = 'anon_session';
 
 // ============================================
+// SESSION-01..03: Session metadata privacy
+// ============================================
+
+describe('Session metadata privacy', () => {
+  it('default absent metadata policy stores raw ipAddress and userAgent', async () => {
+    const db = makeMockDb();
+    const manager = createSessionManager(db, { secret: TEST_SECRET });
+    const mockRes = makeMockRes();
+
+    await manager.createSession('user1', mockRes as never, {
+      ipAddress: '203.0.113.42',
+      userAgent: 'Mozilla/5.0 test',
+    });
+
+    expect(db.createSession).toHaveBeenCalledOnce();
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(input.ipAddress).toBe('203.0.113.42');
+    expect(input.userAgent).toBe('Mozilla/5.0 test');
+  });
+
+  it('omit policy stores undefined for ipAddress and userAgent', async () => {
+    const db = makeMockDb();
+    const manager = createSessionManager(db, {
+      secret: TEST_SECRET,
+      metadata: { ipAddress: 'omit', userAgent: 'omit' },
+    });
+    const mockRes = makeMockRes();
+
+    await manager.createSession('user1', mockRes as never, {
+      ipAddress: '203.0.113.42',
+      userAgent: 'Mozilla/5.0 test',
+    });
+
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(input.ipAddress).toBeUndefined();
+    expect(input.userAgent).toBeUndefined();
+  });
+
+  it('hash policy stores deterministic HMAC values instead of raw metadata', async () => {
+    const db = makeMockDb();
+    const manager = createSessionManager(db, {
+      secret: TEST_SECRET,
+      metadata: { ipAddress: 'hash', userAgent: 'hash' },
+    });
+    const mockRes = makeMockRes();
+
+    await manager.createSession('user1', mockRes as never, {
+      ipAddress: '203.0.113.42',
+      userAgent: 'Mozilla/5.0 test',
+    });
+
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(input.ipAddress).toMatch(/^hmac-sha256:[0-9a-f]{64}$/);
+    expect(input.userAgent).toMatch(/^hmac-sha256:[0-9a-f]{64}$/);
+    expect(input.ipAddress).not.toBe('203.0.113.42');
+    expect(input.userAgent).not.toBe('Mozilla/5.0 test');
+  });
+
+  it('truncate policy stores an IPv4 /24 prefix instead of the full raw IP', async () => {
+    const db = makeMockDb();
+    const manager = createSessionManager(db, {
+      secret: TEST_SECRET,
+      metadata: { ipAddress: 'truncate' },
+    });
+    const mockRes = makeMockRes();
+
+    await manager.createSession('user1', mockRes as never, {
+      ipAddress: '203.0.113.42',
+      userAgent: 'Mozilla/5.0 test',
+    });
+
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(input.ipAddress).toBe('203.0.113.0/24');
+    expect(input.userAgent).toBe('Mozilla/5.0 test');
+  });
+
+  it('truncate policy omits malformed IPs instead of storing raw untrusted input', async () => {
+    const db = makeMockDb();
+    const manager = createSessionManager(db, {
+      secret: TEST_SECRET,
+      metadata: { ipAddress: 'truncate' },
+    });
+    const mockRes = makeMockRes();
+
+    await manager.createSession('user1', mockRes as never, {
+      ipAddress: 'not-an-ip',
+      userAgent: 'Mozilla/5.0 test',
+    });
+
+    const input = (db.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(input.ipAddress).toBeUndefined();
+    expect(input.userAgent).toBe('Mozilla/5.0 test');
+  });
+});
+
+// ============================================
 // SEC-01: Signature verification
 // ============================================
 

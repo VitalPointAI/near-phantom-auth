@@ -57,7 +57,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 - [ ] **Phase 13: Registration Analytics Hook** (TBD plans) — `hooks.onAuthEvent` fire-and-forget callback with type-level PII whitelist; tsc-fail fixture (R2 highest-priority defense, lands before F2/F3 so subsequent phases are tested against it); `awaitAnalytics: boolean` opt-in
 - [ ] **Phase 14: Second-Factor Enrolment Hook** (TBD plans) — `hooks.afterAuthSuccess` fires inline inside transaction, blocks session creation, on passkey-register / passkey-login / oauth-callback (3 instrumentation sites); MPC-funded-but-rolled-back trade-off documented
 - [x] **Phase 15: Lazy-Backfill Hook** (4/4 plans) — completed 2026-04-30; `hooks.backfillKeyBundle` pass-through; library does NOT persist bundles or migrate IPFS recovery blobs; backfill failure NEVER blocks login (BACKFILL-03 contract)
-- [ ] **Phase 16: Release Prep** (4 plans) — README "Hooks (v0.7.0)" section, CHANGELOG, version bump to 0.7.0, build, smoke install, npm publish, git tag, backwards-compat assertion
+- [x] **Phase 16: Release Prep** (4 plans) — README "Hooks (v0.7.0)" section, CHANGELOG, version bump to 0.7.0, build, smoke install, npm publish, git tag, backwards-compat assertion
 
 **Total v1 requirements:** 30 (BACKUP-01..05, HOOK-01..06, BACKFILL-01..04, RPID-01..05, ANALYTICS-01..06, RELEASE-01..04)
 
@@ -163,11 +163,11 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   2. A reader of CHANGELOG.md finds a v0.7.0 entry with feature highlights (5 hooks/features) and an explicit additive-only callout (no breaking changes from v0.6.1).
   3. A consumer running `npm install @vitalpoint/near-phantom-auth@0.7.0` in a fresh fixture sees `import { createAnonAuth } from '@vitalpoint/near-phantom-auth/server'` resolve, with the new hook surface (`hooks.afterAuthSuccess`, `hooks.backfillKeyBundle`, `hooks.onAuthEvent`, `awaitAnalytics`, `rp.relatedOrigins`) visible in TypeScript autocomplete.
   4. The `@vitalpoint/near-phantom-auth@0.7.0` artifact is published on the npm registry (latest dist-tag), the `v0.7.0` git tag is pushed to origin, and existing v0.6.1 consumer fixtures continue to compile and run unchanged (backwards-compat assertion via re-running prior contract tests against the new dist).
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 - [x] 16-01-PLAN.md (Wave 0) — RELEASE-01/02 docs: consolidated README "Hooks (v0.7.0)" section plus CHANGELOG v0.7.0 additive-only entry
 - [x] 16-02-PLAN.md (Wave 1) — RELEASE-03 build prep: bump package metadata to 0.7.0, rebuild dist, verify runtime/type export surfaces
 - [x] 16-03-PLAN.md (Wave 2) — RELEASE-03 smoke install: npm pack local tarball, fresh-consumer TypeScript/runtime smoke test for v0.7.0 hooks and v0.6.1 MPC compatibility
-- [ ] 16-04-PLAN.md (Wave 3) — RELEASE-04 publish/tag/close: npm publish, registry smoke install, git tag push, planning state closure (manual credentials checkpoint)
+- [x] 16-04-PLAN.md (Wave 3) — RELEASE-04 publish/tag/close: npm publish, registry smoke install, git tag push, planning state closure (manual credentials checkpoint)
 
 ## Progress
 
@@ -188,4 +188,32 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 13. Registration Analytics Hook | v0.7.0 | 5/5 | Complete   | 2026-04-30 |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 4/4 | Complete    | 2026-04-30 |
 | 15. Lazy-Backfill Hook | v0.7.0 | 4/4 | Complete | 2026-04-30 |
-| 16. Release Prep | v0.7.0 | 3/4 | Waiting on publish checkpoint | - |
+| 16. Release Prep | v0.7.0 | 4/4 | Complete | 2026-04-30 |
+| 17. Session Metadata Anonymity Hardening | v0.7.x | 4/4 | Complete | 2026-04-30 |
+
+### Phase 17: Session Metadata Anonymity Hardening
+
+**Goal:** Reduce linkability from operational session metadata by making anonymous-track IP address and user-agent storage configurable, with privacy-preserving defaults or documented opt-in hashing/truncation.
+**Requirements**: SESSION-01, SESSION-02, SESSION-03, SESSION-04, SESSION-05
+**Depends on:** Phase 16
+**Success Criteria** (what must be TRUE):
+  1. A consumer can configure `sessionMetadata.ipAddress` independently as `store`, `omit`, `hash`, or `truncate`; absent config preserves current raw storage behavior for backwards compatibility.
+  2. A consumer can configure `sessionMetadata.userAgent` independently as `store`, `omit`, or `hash`; no user-agent truncation mode exists.
+  3. `omit`, `hash`, and `truncate` policies are applied centrally inside `createSessionManager` before `db.createSession`, covering passkey register/login, recovery, and OAuth session creation paths without route-specific privacy logic.
+  4. Analytics events and pino logs still do not carry raw `ip`, `ipAddress`, `userAgent`, `userId`, `codename`, `nearAccountId`, or `sealingKeyHex`.
+  5. README documents the policy modes, recommends omission for maximum anonymous-track privacy, and corrects the Privacy and Anonymity Audit so session IP/user-agent storage is described as configurable.
+**Plans:** 4/4 plans complete
+
+Plans:
+- [x] 17-01-PLAN.md (Wave 0) - SESSION-01..03 type contract + central normalization + unit tests
+- [x] 17-02-PLAN.md (Wave 1) - SESSION-01/04 createAnonAuth threading + integration coverage
+- [x] 17-03-PLAN.md (Wave 2) - SESSION-03/04 analytics and logging regression guards
+- [x] 17-04-PLAN.md (Wave 3) - SESSION-05 README privacy audit + changelog docs
+
+## v0.7.x Session Metadata Requirements
+
+- **SESSION-01**: `AnonAuthConfig.sessionMetadata?` exposes independent policies for session `ipAddress` and `userAgent` persistence.
+- **SESSION-02**: Session metadata policies support raw storage for compatibility, omission for maximum privacy, HMAC hashing for pseudonymous correlation, and IP truncation for coarse network analytics.
+- **SESSION-03**: Policy transformation happens centrally in `createSessionManager` before `db.createSession`; route handlers may continue passing `req.ip` and `user-agent`.
+- **SESSION-04**: Existing analytics and logging PII guards remain enforced; no lifecycle event or log call may include raw session metadata.
+- **SESSION-05**: README and changelog document the policy modes and clearly state that session IP/user-agent storage is configurable rather than inherently required.

@@ -2,6 +2,7 @@
 
 var pino3 = require('pino');
 var crypto$1 = require('crypto');
+var net = require('net');
 var server = require('@simplewebauthn/server');
 var bs582 = require('bs58');
 var transactions = require('@near-js/transactions');
@@ -789,6 +790,55 @@ function parseCookies(req) {
   });
   return cookies;
 }
+function hmacMetadata(value, secret) {
+  return `hmac-sha256:${crypto$1.createHmac("sha256", secret).update(value).digest("hex")}`;
+}
+function truncateIpAddress(value) {
+  const ip = value.trim();
+  if (net.isIP(ip) === 4) {
+    const [a, b, c] = ip.split(".");
+    return `${a}.${b}.${c}.0/24`;
+  }
+  if (net.isIP(ip) === 6) {
+    const expanded = expandIpv6(ip);
+    if (!expanded) return void 0;
+    return `${expanded.slice(0, 3).join(":")}::/48`;
+  }
+  return void 0;
+}
+function expandIpv6(value) {
+  if (value.includes(":::")) return void 0;
+  const [headRaw, tailRaw] = value.split("::");
+  if (value.split("::").length > 2) return void 0;
+  const head = headRaw ? headRaw.split(":") : [];
+  const tail = tailRaw ? tailRaw.split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0) return void 0;
+  const groups = value.includes("::") ? [...head, ...Array.from({ length: missing }, () => "0"), ...tail] : head;
+  if (groups.length !== 8) return void 0;
+  return groups.map((part) => {
+    const normalized = part.toLowerCase().replace(/^0+([0-9a-f])/, "$1");
+    return normalized === "" ? "0" : normalized;
+  });
+}
+function normalizeSessionMetadata(input) {
+  const ipPolicy = input.policy?.ipAddress ?? "store";
+  const userAgentPolicy = input.policy?.userAgent ?? "store";
+  const ipAddress = (() => {
+    if (!input.ipAddress) return void 0;
+    if (ipPolicy === "omit") return void 0;
+    if (ipPolicy === "hash") return hmacMetadata(input.ipAddress, input.secret);
+    if (ipPolicy === "truncate") return truncateIpAddress(input.ipAddress);
+    return input.ipAddress;
+  })();
+  const userAgent = (() => {
+    if (!input.userAgent) return void 0;
+    if (userAgentPolicy === "omit") return void 0;
+    if (userAgentPolicy === "hash") return hmacMetadata(input.userAgent, input.secret);
+    return input.userAgent;
+  })();
+  return { ipAddress, userAgent };
+}
 function createSessionManager(db, config) {
   const log2 = (config.logger ?? pino3__default.default({ level: "silent" })).child({ module: "session" });
   const cookieName = config.cookieName || SESSION_COOKIE_NAME;
@@ -807,11 +857,17 @@ function createSessionManager(db, config) {
       const sessionId = crypto$1.randomUUID();
       const now = /* @__PURE__ */ new Date();
       const expiresAt = new Date(now.getTime() + durationMs);
+      const metadata = normalizeSessionMetadata({
+        ipAddress: options.ipAddress,
+        userAgent: options.userAgent,
+        policy: config.metadata,
+        secret: config.secret
+      });
       const sessionInput = {
         userId,
         expiresAt,
-        ipAddress: options.ipAddress,
-        userAgent: options.userAgent
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.userAgent
       };
       const session = await db.createSession({
         ...sessionInput,
@@ -3474,6 +3530,7 @@ function createAnonAuth(config) {
   const sessionManager = createSessionManager(db, {
     secret: config.sessionSecret,
     durationMs: config.sessionDurationMs,
+    metadata: config.sessionMetadata,
     logger
   });
   const rpConfig = config.rp || {
