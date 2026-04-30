@@ -518,6 +518,8 @@ export function createRouter(config: RouterConfig): Router {
           createdAt: new Date(),
         });
 
+        emit({ type: 'recovery.wallet.link.success', rpId, timestamp: Date.now() });
+
         res.json({
           success: true,
           message: 'Wallet linked for recovery. The link is stored on-chain, not in our database.',
@@ -582,6 +584,8 @@ export function createRouter(config: RouterConfig): Router {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
+
+        emit({ type: 'recovery.wallet.recover.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -651,6 +655,8 @@ export function createRouter(config: RouterConfig): Router {
           createdAt: new Date(),
         });
 
+        emit({ type: 'recovery.ipfs.setup.success', rpId, timestamp: Date.now() });
+
         res.json({
           success: true,
           cid,
@@ -693,6 +699,8 @@ export function createRouter(config: RouterConfig): Router {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
+
+        emit({ type: 'recovery.ipfs.recover.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -771,6 +779,8 @@ export function createRouter(config: RouterConfig): Router {
 
       // Delete user — passkeys cascade via FK ON DELETE CASCADE.
       await db.deleteUser(userId);
+
+      emit({ type: 'account.delete', rpId, timestamp: Date.now() });
 
       res.json({ success: true });
     } catch (error) {
