@@ -12,7 +12,7 @@ import cookieParser from 'cookie-parser';
 import type { SessionManager } from '../session.js';
 import type { MPCAccountManager } from '../mpc.js';
 import type { IPFSRecoveryManager } from '../recovery/ipfs.js';
-import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig, AnonAuthHooks } from '../../types/index.js';
+import type { DatabaseAdapter, OAuthConfig, OAuthProvider, RateLimitConfig, CsrfConfig, AnonAuthHooks, AfterAuthSuccessCtx } from '../../types/index.js';
 import type { EmailService } from '../email.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
 import pino from 'pino';
@@ -69,6 +69,29 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     logger: config.logger,
     await: config.awaitAnalytics === true,
   });
+
+  // ░░ Phase 14 HOOK-04 — local helper, encapsulates the 3 IDENTICAL fire blocks ░░
+  // The 3 OAuth branches (existing-same-provider, link-by-email, new-user) have
+  // IDENTICAL ctx shape and IDENTICAL hook handling. Drift across branches is a
+  // correctness risk (RESEARCH §Pattern 7) — this helper enforces lockstep by
+  // construction. Returns:
+  //   - undefined on `continue: true` OR no hook configured (caller proceeds with
+  //     standard createSession + response)
+  //   - { status, body } on `continue: false` (caller short-circuits with HOOK-05
+  //     response shape; MUST skip createSession to avoid Set-Cookie leak T-14-02)
+  //
+  // Pitfall 7 (T-14-07): handles `hook === undefined` so callers can pass
+  //   `config.hooks?.afterAuthSuccess` directly.
+  // Pitfall 8 (T-14-08): awaits the hook explicitly.
+  async function runOAuthHook(
+    hook: AnonAuthHooks['afterAuthSuccess'],
+    ctx: Extract<AfterAuthSuccessCtx, { authMethod: `oauth-${string}` }>,
+  ): Promise<{ status: number; body: Record<string, unknown> } | undefined> {
+    if (!hook) return undefined;
+    const result = await hook(ctx);
+    if (result.continue) return undefined;
+    return { status: result.status, body: result.body };
+  }
 
   // Create rate limiter instance
   const authRateConfig = config.rateLimiting?.auth ?? {};
