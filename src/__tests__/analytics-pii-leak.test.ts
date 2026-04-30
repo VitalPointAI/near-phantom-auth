@@ -1,30 +1,93 @@
 /**
- * Phase 13 Plan 01 (Wave 0) — ANALYTICS-03 stub.
+ * Phase 13 Plan 02 — ANALYTICS-03 implementation (tsc-fail fixture).
  *
- * Covers:
- *   - ANALYTICS-03: tsc-fail fixture proves a literal adding `codename`,
- *     `userId`, `nearAccountId`, `email`, `ip`, or `userAgent` to any
- *     AnalyticsEvent variant fails `tsc --noEmit`.
+ * Pattern: direct mirror of src/__tests__/mpc-treasury-leak.test.ts:197-242.
+ * Adaptation: per-test UUID-suffixed fixture path because Phase 13 has 6
+ * forbidden-field assertions (vs MPC-07's 1) and vitest 4.x runs files in
+ * parallel — see Pitfall 5 in 13-RESEARCH.md lines 614-619.
  *
- * Analog: src/__tests__/mpc-treasury-leak.test.ts:197-242 (Gate 4 / MPC-07).
- * When Plan 02 lands AnalyticsEvent, replace each `it.todo` below with a
- * real `it(...)` that:
- *   1. writes a fixture .ts file at src/__tests__/_analytics-pii-fixture-${randomUUID()}.ts
- *      (per-test UUID required — Pitfall 5 in 13-RESEARCH.md lines 614-619 —
- *      because parallel vitest workers race on a deterministic path)
- *   2. shells out to `npx tsc --noEmit <fixturePath>` via execSync
- *   3. asserts tscFailed === true AND tscOutput matches /<forbiddenField>/
- *   4. unlinks the fixture in `finally`
- *
- * Wave 0 invariant: this file MUST be picked up by vitest.
+ * Each test writes a tiny .ts file that imports AnalyticsEvent and tries
+ * to assign a literal containing a forbidden PII field. tsc --noEmit MUST
+ * fail; the test asserts both the non-zero exit AND the offending field
+ * name appears in tsc's output.
  */
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { existsSync, writeFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { execSync } from 'child_process';
+import { randomUUID } from 'crypto';
 
-describe('ANALYTICS-03: AnalyticsEvent forbids PII via tsc-fail fixture (Wave 0 stub)', () => {
-  it.todo('a fixture adding `codename` to register.start fails tsc --noEmit');
-  it.todo('a fixture adding `userId` to register.finish.success fails tsc --noEmit');
-  it.todo('a fixture adding `nearAccountId` to login.finish.success fails tsc --noEmit');
-  it.todo('a fixture adding `email` to oauth.callback.success fails tsc --noEmit');
-  it.todo('a fixture adding `ip` to account.delete fails tsc --noEmit');
-  it.todo('a fixture adding `userAgent` to recovery.wallet.link.success fails tsc --noEmit');
+/**
+ * Per forbidden field, the test specifies which variant the fixture should
+ * extend. Each variant must require the field to fail tsc — i.e. the
+ * fixture adds an EXTRA field beyond the variant's allowed set.
+ *
+ * `extraPrefix` is OPTIONAL: variants whose allowed set is exactly
+ * { type, rpId, timestamp } omit it; variants with additional required
+ * fields (backupEligible, provider) declare them so the ONLY tsc error is
+ * the forbidden field — not a missing required field.
+ */
+interface ForbiddenCase {
+  field: string;
+  variant: string;
+  extraPrefix?: string;
+  extra: string;
+}
+
+const forbiddenCases: ForbiddenCase[] = [
+  { field: 'codename', variant: 'register.start', extra: "codename: 'ALPHA-7-BRAVO'" },
+  { field: 'userId', variant: 'register.finish.success', extraPrefix: 'backupEligible: true,', extra: "userId: 'user-1'" },
+  { field: 'nearAccountId', variant: 'login.finish.success', extraPrefix: 'backupEligible: false,', extra: "nearAccountId: 'alice.testnet'" },
+  { field: 'email', variant: 'oauth.callback.success', extraPrefix: "provider: 'google',", extra: "email: 'alice@example.com'" },
+  { field: 'ip', variant: 'account.delete', extra: "ip: '127.0.0.1'" },
+  { field: 'userAgent', variant: 'recovery.wallet.link.success', extra: "userAgent: 'Mozilla/5.0'" },
+];
+
+describe('ANALYTICS-03: AnalyticsEvent forbids PII via tsc-fail fixture', () => {
+  it.each(forbiddenCases)(
+    'a fixture adding `$field` to $variant fails tsc --noEmit',
+    ({ field, variant, extraPrefix, extra }) => {
+      // Per-test UUID — Pitfall 5: parallel vitest workers race on a
+      // deterministic path. Each test gets its own fixture file.
+      const fixturePath = join(
+        process.cwd(),
+        `src/__tests__/_analytics-pii-fixture-${randomUUID()}.ts`,
+      );
+
+      const fixtureSrc = `
+        import type { AnalyticsEvent } from '../server/analytics.js';
+        const _bad: AnalyticsEvent = {
+          type: '${variant}',
+          rpId: 'localhost',
+          timestamp: 0,
+          ${extraPrefix ?? ''}
+          ${extra}, // <-- this MUST fail tsc
+        };
+        export {};
+        void _bad;
+      `;
+
+      writeFileSync(fixturePath, fixtureSrc, 'utf-8');
+
+      let tscFailed = false;
+      let tscOutput = '';
+      try {
+        execSync(`npx tsc --noEmit ${fixturePath}`, {
+          encoding: 'utf-8',
+          cwd: process.cwd(),
+          stdio: 'pipe',
+        });
+      } catch (err) {
+        tscFailed = true;
+        const e = err as { stdout?: string; stderr?: string };
+        tscOutput = (e.stdout || '') + (e.stderr || '');
+      } finally {
+        if (existsSync(fixturePath)) unlinkSync(fixturePath);
+      }
+
+      expect(tscFailed).toBe(true);
+      expect(tscOutput).toMatch(new RegExp(field));
+    },
+    30_000,
+  );
 });
