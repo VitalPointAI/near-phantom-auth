@@ -50,6 +50,14 @@ export interface RouterConfig {
   csrf?: CsrfConfig;
   /** Phase 11 scaffolding — accepted and stored; call sites wired in Phases 13–15. */
   hooks?: AnonAuthHooks;
+  /** Phase 13 ANALYTICS-01. Primary RP ID, used in every emitted event's
+   *  `rpId` field. Captured once at router construction, NEVER per-request
+   *  (Pitfall 4 — `@simplewebauthn/server` does not surface the matched
+   *  rpId in multi-RP_ID flows; primary is the only safe source). */
+  rpId?: string;
+  /** Phase 13 ANALYTICS-04. When true, lifecycle emit calls await the
+   *  consumer's `onAuthEvent` hook before responding. Default false. */
+  awaitAnalytics?: boolean;
 }
 
 export function createRouter(config: RouterConfig): Router {

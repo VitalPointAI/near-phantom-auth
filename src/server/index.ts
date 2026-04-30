@@ -208,6 +208,8 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
       csrf: config.csrf,
       oauthManager,
       hooks: config.hooks,                        // Phase 11 HOOK-01
+      rpId: rpConfig.id,                          // Phase 13 ANALYTICS-01
+      awaitAnalytics: config.awaitAnalytics,      // Phase 13 ANALYTICS-04
     });
   }
 
@@ -228,6 +230,8 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     rateLimiting: config.rateLimiting,
     csrf: config.csrf,
     hooks: config.hooks,                          // Phase 11 HOOK-01
+    rpId: rpConfig.id,                            // Phase 13 ANALYTICS-01
+    awaitAnalytics: config.awaitAnalytics,        // Phase 13 ANALYTICS-04
   });
 
   return {
@@ -270,6 +274,7 @@ export type {
   RateLimitConfig,
   CsrfConfig
 } from '../types/index.js';
+export type { AnalyticsEvent } from './analytics.js';        // Phase 13 ANALYTICS-02 re-export
 export type { SessionManager, SessionConfig } from './session.js';
 export type { PasskeyManager, PasskeyConfig } from './passkey.js';
 export { MPCAccountManager } from './mpc.js';
