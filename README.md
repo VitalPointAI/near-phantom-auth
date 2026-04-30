@@ -188,6 +188,132 @@ silently broken by a refactor because the array IS the list of pairs.
 - [web.dev — WebAuthn Related Origin Requests](https://web.dev/articles/webauthn-related-origin-requests)
 - [W3C WebAuthn Level 3 §5.10.3](https://www.w3.org/TR/webauthn-3/) — Related Origin Requests algorithm
 
+## Second-Factor Enrolment Hook (v0.7.0)
+
+`near-phantom-auth@0.7.0` exposes `hooks.afterAuthSuccess` — an inline,
+blocking hook that fires AFTER auth succeeds (passkey verify + DB persist
++ MPC funding) but BEFORE session creation. The hook lets consumers gate
+session issuance on a second factor (TOTP, push notification, hardware
+token, manual approval, etc.) without forcing the library into the
+secret-storage business.
+
+### What the library does
+
+The library invokes your hook at five fire points:
+
+1. `POST /register/finish` — after passkey verify + `mpcManager.createAccount`
+   + `db.createUser` + `db.createPasskey`, BEFORE `sessionManager.createSession`.
+   Fires INSIDE the `db.transaction()` wrapper — a hook throw rolls back the
+   DB rows. (`src/server/router.ts`)
+2. `POST /login/finish` — after passkey verify + `db.getUserById`, BEFORE
+   `sessionManager.createSession`. NO transaction wrapper on this path —
+   a hook throw produces a 500 but no DB rollback is needed (the
+   passkey-counter update already committed by `passkeyManager.finishAuthentication`
+   must persist for replay protection). (`src/server/router.ts`)
+3. `POST /oauth/:provider/callback` — three success branches:
+   - **Existing user, same provider** — fires after `db.getOAuthUserByProvider`.
+   - **Existing user, link by email** — fires after `db.linkOAuthProvider`.
+   - **New user** — fires after `mpcManager.createAccount` + `db.createOAuthUser`
+     + IPFS recovery setup.
+   NO transaction wrapper on any OAuth branch. (`src/server/oauth/router.ts`)
+
+The hook receives a discriminated-union context:
+
+```typescript
+export type AfterAuthSuccessProvider = 'google' | 'github' | 'twitter';
+
+export type AfterAuthSuccessCtx =
+  | { authMethod: 'passkey-register'; userId: string; codename: string;
+      nearAccountId: string; req: express.Request }
+  | { authMethod: 'passkey-login';    userId: string; codename: string;
+      nearAccountId: string; req: express.Request }
+  | { authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter';
+      userId: string; codename?: string; nearAccountId: string;
+      provider: AfterAuthSuccessProvider; req: express.Request };
+```
+
+The hook returns:
+
+```typescript
+type AfterAuthSuccessResult =
+  | { continue: true }
+  | { continue: false; status: number; body: Record<string, unknown> };
+```
+
+On `continue: true`, the library proceeds with `sessionManager.createSession`
+and the standard response. On `continue: false`, the library spreads
+consumer's `body` into the response, echoes a structured
+`secondFactor: { status, body }` field, and **DOES NOT** create a session
+(no `Set-Cookie` header is emitted).
+
+Hook ctx surfaces `userId`, `codename`, and `nearAccountId` to your code —
+the library does NOT log or telemetrize these fields (anonymity invariant).
+
+### What the consumer must do
+
+Wire the hook on `createAnonAuth({ ..., hooks: { afterAuthSuccess: ... } })`.
+Inside, use the discriminator to narrow:
+
+```typescript
+afterAuthSuccess: async (ctx) => {
+  if (ctx.authMethod === 'passkey-register') {
+    // Maybe: enqueue 2FA enrolment ceremony
+    return { continue: false, status: 202, body: { totpUri: '...' } };
+  }
+  if (ctx.authMethod === 'passkey-login') {
+    // Verify a TOTP code already submitted by the client (e.g., in req.body.totp).
+    const totp = (ctx.req.body as any).totp;
+    if (!totp || !(await verifyTotp(ctx.userId, totp))) {
+      return { continue: false, status: 401, body: { error: 'TOTP required' } };
+    }
+  }
+  if (ctx.authMethod.startsWith('oauth-')) {
+    // ctx.provider is now narrowed to AfterAuthSuccessProvider.
+    // ctx.codename is OPTIONAL on OAuth — OAuthUser does not carry a codename in v0.7.0.
+  }
+  return { continue: true };
+}
+```
+
+`ctx.req` is the **bare Express Request** — it carries cookies, headers,
+body, etc. The library does NOT sanitize this surface; what your hook
+reads from `req` is your responsibility.
+
+### MPC orphan trade-off (HOOK-06)
+
+**`mpcManager.createAccount` runs BEFORE the database transaction opens
+on `/register/finish` (and outside any transaction wrapper on the OAuth
+new-user branch).** A hook throw OR a `continue: false` AFTER MPC funding
+leaves an **orphaned funded NEAR implicit account with no DB record**.
+The library cannot recover the on-chain funds.
+
+**Mitigation:** make your hook idempotent and non-throwing. Prefer
+`{ continue: false, status, body }` over `throw new Error(...)` for soft
+failures (TOTP not yet submitted, push notification timeout, etc.).
+A returned `continue: false` does not roll back the DB — it commits the
+user + passkey rows but skips session creation. Your subsequent retry
+can use the same `userId` to complete enrolment.
+
+**OAuth Branch 3 (new user) extends the trade-off:** because OAuth has no
+transaction wrapper at all, a `continue: false` on the new-user branch
+leaves the `oauth_users` row, the MPC account, **AND the IPFS recovery blob**
+all committed. Same mitigation applies.
+
+### Cookie semantics
+
+On `continue: false`, the response carries NO live `Set-Cookie` header — the
+session was never created. (The OAuth callback always emits expired
+`oauth_state` / `oauth_code_verifier` clear-cookie hygiene, which is NOT
+a session cookie.) Your client should detect short-circuit by inspecting
+`response.body.secondFactor` (the structured echo) and initiate the
+second-factor enrolment ceremony you specified in `body`.
+
+### References
+
+- REQUIREMENTS: `HOOK-02..06` in `.planning/REQUIREMENTS.md`
+- Type definitions: `src/types/index.ts` (search for `AfterAuthSuccessCtx`)
+- Re-export surface: `import type { AfterAuthSuccessCtx, AfterAuthSuccessResult, AfterAuthSuccessProvider } from '@vitalpoint/near-phantom-auth/server';`
+
 ## Installation
 
 ```bash
