@@ -313,3 +313,52 @@ describe('ANALYTICS-04: error swallow (sync throw)', () => {
     expect(analyticsWarn.err.message).toBeUndefined();
   });
 });
+
+describe('ANALYTICS-04: awaitAnalytics: true mode', () => {
+  it('a 5s onAuthEvent hook ADDS ~5s to /register/start when awaitAnalytics is true', async () => {
+    const slowHook = async () => {
+      await new Promise((r) => setTimeout(r, 5000));
+    };
+
+    const app = makeApp({ onAuthEvent: slowHook, awaitAnalytics: true });
+
+    const t0 = performance.now();
+    const res = await request(app).post('/register/start').send({});
+    const elapsed = performance.now() - t0;
+
+    expect(res.status).toBe(200);
+    expect(elapsed).toBeGreaterThan(4500); // await mode wired — hook's 5s IS in the critical path
+  }, 10_000);
+
+  it('a synchronously-throwing onAuthEvent in await mode STILL produces 200 OK (Critical Constraint 8 — errors swallowed)', async () => {
+    const throwHook = () => {
+      throw new Error('await-mode-throw-leak-7');
+    };
+    const { logger, entries } = makeCapturedLogger();
+    const app = makeApp({ onAuthEvent: throwHook, awaitAnalytics: true, logger });
+
+    const res = await request(app).post('/register/start').send({});
+    expect(res.status).toBe(200);
+
+    const analyticsWarn = entries.find(
+      (e) => e.level === 40 && e.module === 'analytics',
+    );
+    expect(analyticsWarn).toBeDefined();
+    expect(JSON.stringify(entries)).not.toContain('await-mode-throw-leak-7');
+  }, 10_000);
+
+  it('a Promise-rejecting onAuthEvent in await mode STILL produces 200 OK', async () => {
+    const rejectHook = () => Promise.reject(new Error('await-rejected-leak-7'));
+    const { logger, entries } = makeCapturedLogger();
+    const app = makeApp({ onAuthEvent: rejectHook, awaitAnalytics: true, logger });
+
+    const res = await request(app).post('/register/start').send({});
+    expect(res.status).toBe(200);
+
+    const analyticsWarn = entries.find(
+      (e) => e.level === 40 && e.module === 'analytics',
+    );
+    expect(analyticsWarn).toBeDefined();
+    expect(JSON.stringify(entries)).not.toContain('await-rejected-leak-7');
+  }, 10_000);
+});

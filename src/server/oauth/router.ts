@@ -245,7 +245,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
           userAgent: req.headers['user-agent'],
         });
 
-        emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+        await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
 
         return res.json({
           success: true,
@@ -281,7 +281,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
             userAgent: req.headers['user-agent'],
           });
 
-          emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+          await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
 
           return res.json({
             success: true,
@@ -367,7 +367,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         userAgent: req.headers['user-agent'],
       });
 
-      emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+      await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
 
       return res.json({
         success: true,

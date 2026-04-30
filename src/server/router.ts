@@ -151,7 +151,7 @@ export function createRouter(config: RouterConfig): Router {
       const body = validateBody(registerStartBodySchema, req, res);
       if (!body) return;
 
-      emit({ type: 'register.start', rpId, timestamp: Date.now() });
+      await emit({ type: 'register.start', rpId, timestamp: Date.now() });
 
       // Generate temporary user ID for registration
       const tempUserId = crypto.randomUUID();
@@ -206,7 +206,7 @@ export function createRouter(config: RouterConfig): Router {
       const { challengeId, response, tempUserId, codename } = body;
 
       if (!isValidCodename(codename)) {
-        emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'invalid-codename' });
+        await emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'invalid-codename' });
         return res.status(400).json({ error: 'Invalid codename format' });
       }
 
@@ -217,7 +217,7 @@ export function createRouter(config: RouterConfig): Router {
       );
 
       if (!verified || !passkeyData) {
-        emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'passkey-verification-failed' });
+        await emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'passkey-verification-failed' });
         return res.status(400).json({ error: 'Passkey verification failed' });
       }
 
@@ -257,7 +257,7 @@ export function createRouter(config: RouterConfig): Router {
         ? await db.transaction(doRegistration)
         : await doRegistration(db);
 
-      emit({
+      await emit({
         type: 'register.finish.success',
         rpId,
         timestamp: Date.now(),
@@ -275,7 +275,7 @@ export function createRouter(config: RouterConfig): Router {
       });
     } catch (error) {
       log.error({ err: error }, 'Registration finish error');
-      emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
+      await emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
       res.status(500).json({ error: 'Registration failed' });
     }
   });
@@ -295,7 +295,7 @@ export function createRouter(config: RouterConfig): Router {
 
       const { codename } = body;
 
-      emit({
+      await emit({
         type: 'login.start',
         rpId,
         timestamp: Date.now(),
@@ -338,14 +338,14 @@ export function createRouter(config: RouterConfig): Router {
       );
 
       if (!verified || !userId) {
-        emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'auth-failed' });
+        await emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'auth-failed' });
         return res.status(401).json({ error: 'Authentication failed' });
       }
 
       const user = await db.getUserById(userId);
 
       if (!user) {
-        emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'user-not-found' });
+        await emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'user-not-found' });
         return res.status(404).json({ error: 'User not found' });
       }
 
@@ -359,7 +359,7 @@ export function createRouter(config: RouterConfig): Router {
       // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
       // path with no passkeyData still returns a valid { success, codename } response.
       if (passkeyData) {
-        emit({
+        await emit({
           type: 'login.finish.success',
           rpId,
           timestamp: Date.now(),
@@ -379,7 +379,7 @@ export function createRouter(config: RouterConfig): Router {
       });
     } catch (error) {
       log.error({ err: error }, 'Login finish error');
-      emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
+      await emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
       res.status(500).json({ error: 'Authentication failed' });
     }
   });
@@ -518,7 +518,7 @@ export function createRouter(config: RouterConfig): Router {
           createdAt: new Date(),
         });
 
-        emit({ type: 'recovery.wallet.link.success', rpId, timestamp: Date.now() });
+        await emit({ type: 'recovery.wallet.link.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -585,7 +585,7 @@ export function createRouter(config: RouterConfig): Router {
           userAgent: req.headers['user-agent'],
         });
 
-        emit({ type: 'recovery.wallet.recover.success', rpId, timestamp: Date.now() });
+        await emit({ type: 'recovery.wallet.recover.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -655,7 +655,7 @@ export function createRouter(config: RouterConfig): Router {
           createdAt: new Date(),
         });
 
-        emit({ type: 'recovery.ipfs.setup.success', rpId, timestamp: Date.now() });
+        await emit({ type: 'recovery.ipfs.setup.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -700,7 +700,7 @@ export function createRouter(config: RouterConfig): Router {
           userAgent: req.headers['user-agent'],
         });
 
-        emit({ type: 'recovery.ipfs.recover.success', rpId, timestamp: Date.now() });
+        await emit({ type: 'recovery.ipfs.recover.success', rpId, timestamp: Date.now() });
 
         res.json({
           success: true,
@@ -780,7 +780,7 @@ export function createRouter(config: RouterConfig): Router {
       // Delete user — passkeys cascade via FK ON DELETE CASCADE.
       await db.deleteUser(userId);
 
-      emit({ type: 'account.delete', rpId, timestamp: Date.now() });
+      await emit({ type: 'account.delete', rpId, timestamp: Date.now() });
 
       res.json({ success: true });
     } catch (error) {
