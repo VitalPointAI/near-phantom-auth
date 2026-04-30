@@ -245,15 +245,46 @@ export function createRouter(config: RouterConfig): Router {
           transports: passkeyData.transports,
         });
 
+        // ░░ Phase 14 HOOK-02 fire point ░░
+        // Fires INSIDE the transaction so a hook throw rolls back createUser + createPasskey.
+        // MPC createAccount already ran at line ~225 (BEFORE this callback) — orphan-MPC
+        // trade-off documented in HOOK-06 (T-14-04 / Pitfall 1). Consumer mitigation:
+        // idempotent + non-throwing hooks; prefer { continue: false } over throw for soft fails.
+        //
+        // Pitfall 7 (T-14-07): use `config.hooks?.afterAuthSuccess` (optional chain on BOTH
+        // hooks AND afterAuthSuccess) — handles `hooks: undefined` and `hooks: { ... }` with
+        // afterAuthSuccess absent.
+        //
+        // Pitfall 8 (T-14-08): `await` the hook explicitly. The type signature is
+        // `Promise<AfterAuthSuccessResult>` — missing await would let the handler proceed
+        // before the hook resolves, breaking short-circuit semantics.
+        let secondFactor: { status: number; body: Record<string, unknown> } | undefined;
+        if (config.hooks?.afterAuthSuccess) {
+          const result = await config.hooks.afterAuthSuccess({
+            authMethod: 'passkey-register',
+            userId: user.id,
+            codename: user.codename,
+            nearAccountId: user.nearAccountId,
+            req,
+          });
+          if (!result.continue) {
+            secondFactor = { status: result.status, body: result.body };
+            // SHORT-CIRCUIT — return without session creation. The transaction wrapper
+            // sees a successful return (no throw), so createUser + createPasskey rows
+            // COMMIT. Pitfall 2 / T-14-02: NO `Set-Cookie` because createSession is skipped.
+            return { user, session: undefined, secondFactor };
+          }
+        }
+
         const session = await sessionManager.createSession(user.id, res, {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
 
-        return { user, session };
+        return { user, session, secondFactor: undefined };
       };
 
-      const { user } = db.transaction
+      const { user, secondFactor } = db.transaction
         ? await db.transaction(doRegistration)
         : await doRegistration(db);
 
@@ -263,6 +294,18 @@ export function createRouter(config: RouterConfig): Router {
         timestamp: Date.now(),
         backupEligible: deriveBackupEligibility(passkeyData.deviceType),
       });
+
+      // Pitfall 4 Option A: `register.finish.success` already fired above regardless of
+      // `continue: true` vs `continue: false` — auth itself succeeded; the consumer's
+      // second-factor decision is observability surface, not a re-classification.
+      if (secondFactor) {
+        // HOOK-05 short-circuit response. NOTE: NO Set-Cookie because sessionManager.
+        // createSession was never called (T-14-02 cookie leak mitigation).
+        return res.status(secondFactor.status).json({
+          ...secondFactor.body,
+          secondFactor,
+        });
+      }
 
       res.json({
         success: true,
