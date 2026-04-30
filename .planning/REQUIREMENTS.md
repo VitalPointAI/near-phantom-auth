@@ -49,10 +49,10 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 ### Registration Analytics Hook (F5)
 
 - [ ] **ANALYTICS-01**: `hooks.onAuthEvent(event)` fires at lifecycle boundaries on the passkey router, OAuth router, recovery endpoints, and account-deletion endpoint. Events: `register.{start, finish.success, finish.failure}`, `login.{start, finish.success, finish.failure}`, `recovery.{wallet.link.success, wallet.recover.success, ipfs.setup.success, ipfs.recover.success}`, `oauth.callback.success`, `account.delete`.
-- [ ] **ANALYTICS-02**: `AnalyticsEvent` is a discriminated union in `src/server/analytics.ts`. Type forbids `userId`, `codename`, `nearAccountId`, `email`, raw `ip`, raw `userAgent` on every variant. Allowed fields: `type`, `rpId`, `timestamp`, `provider` (OAuth only), `backupEligible` (success events only), static-enum `reason` (failure events only — never `Error.message`), `codenameProvided: boolean` (login.start only — does NOT include the codename itself).
-- [ ] **ANALYTICS-03**: Type-level enforcement via tsc-fail fixture (mirroring v0.6.1 MPC-07 pattern): a `__tsc_fail/analytics-pii-leak.test.ts` file demonstrates that adding `codename` or `nearAccountId` to the event union causes `tsc --noEmit` to fail. Verified via child-process tsc invocation in vitest.
-- [ ] **ANALYTICS-04**: `wrapAnalytics(hook, opts)` in `src/server/analytics.ts` provides safe emit: fire-and-forget by default (does not block response), errors swallowed with WARN-level pino log carrying redacted error message. `opts.await: true` (driven by `AnonAuthConfig.awaitAnalytics`) switches to awaited emit.
-- [ ] **ANALYTICS-05**: PII assertion test snapshots all event variants, asserts each variant's keys are a subset of the allowed-fields whitelist. Test fails if a future change adds a key not in the whitelist.
+- [x] **ANALYTICS-02**: `AnalyticsEvent` is a discriminated union in `src/server/analytics.ts`. Type forbids `userId`, `codename`, `nearAccountId`, `email`, raw `ip`, raw `userAgent` on every variant. Allowed fields: `type`, `rpId`, `timestamp`, `provider` (OAuth only), `backupEligible` (success events only), static-enum `reason` (failure events only — never `Error.message`), `codenameProvided: boolean` (login.start only — does NOT include the codename itself).
+- [x] **ANALYTICS-03**: Type-level enforcement via tsc-fail fixture (mirroring v0.6.1 MPC-07 pattern): a `__tsc_fail/analytics-pii-leak.test.ts` file demonstrates that adding `codename` or `nearAccountId` to the event union causes `tsc --noEmit` to fail. Verified via child-process tsc invocation in vitest.
+- [x] **ANALYTICS-04**: `wrapAnalytics(hook, opts)` in `src/server/analytics.ts` provides safe emit: fire-and-forget by default (does not block response), errors swallowed with WARN-level pino log carrying redacted error message. `opts.await: true` (driven by `AnonAuthConfig.awaitAnalytics`) switches to awaited emit.
+- [x] **ANALYTICS-05**: PII assertion test snapshots all event variants, asserts each variant's keys are a subset of the allowed-fields whitelist. Test fails if a future change adds a key not in the whitelist.
 - [ ] **ANALYTICS-06**: Failure events (`*.finish.failure`) are emitted by default. README documents that consumers consuming analytics in privacy-restricted environments may filter by `event.type` if they want success-only.
 
 ### Release Prep
@@ -135,10 +135,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RPID-04 | Phase 12 | Complete |
 | RPID-05 | Phase 12 | Complete |
 | ANALYTICS-01 | Phase 13 | Pending |
-| ANALYTICS-02 | Phase 13 | Pending |
-| ANALYTICS-03 | Phase 13 | Pending |
-| ANALYTICS-04 | Phase 13 | Pending |
-| ANALYTICS-05 | Phase 13 | Pending |
+| ANALYTICS-02 | Phase 13 | Complete |
+| ANALYTICS-03 | Phase 13 | Complete |
+| ANALYTICS-04 | Phase 13 | Complete |
+| ANALYTICS-05 | Phase 13 | Complete |
 | ANALYTICS-06 | Phase 13 | Pending |
 | RELEASE-01 | Phase 16 | Pending |
 | RELEASE-02 | Phase 16 | Pending |

@@ -4,14 +4,14 @@ milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
 stopped_at: "Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)"
-last_updated: "2026-04-30T02:17:40.971Z"
+last_updated: "2026-04-30T02:40:52.943Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 11
-  percent: 73
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 13 (registration-analytics-hook) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-04-30
 
@@ -62,6 +62,7 @@ Last activity: 2026-04-30
 | Phase 11 P05 | 8min | 3 tasks | 6 files |
 | Phase 11 P06 | 2min | 1 tasks | 1 files |
 | Phase 13 P01 | 3min | 2 tasks | 6 files |
+| Phase 13 P02 | 14min | 5 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase ?]: passkey field appended at END of /register/finish literal per Pattern S4 (additive, no reorder)
 - [Phase ?]: BACKUP-04: AnonAuthState passkeyBackedUp/passkeyBackupEligible populated from result.passkey on register/login finish — no /session round-trip needed
 - [Phase 13]: Phase 13 Wave 0 stub pattern: 6 analytics test files with 51 it.todo placeholders, header docblocks citing requirement IDs and analog files, only 'import { describe, it } from vitest' allowed (no production imports). Locks requirement->test-file 1:1 map for Plans 02-05 — Vitest registers it.todo as skipped, so stubs prove the file is wired without false-positive assertions; header docblocks pre-cite the analog (mpc-treasury-leak.test.ts:197-242, exports.test.ts:48-82, registration-auth.test.ts:18-211) so Wave 1+ executors do 1:1 swap, no re-discovery
+- [Phase ?]: [Phase 13]: AnalyticsEvent union lives in src/server/analytics.ts (not types/index.ts) — co-located with runtime helpers (ALLOWED_EVENT_FIELDS, wrapAnalytics, redactErrorMessage); types/index.ts imports the union for AnonAuthHooks.onAuthEvent narrowing. Mirrors MPCAccountManagerConfig precedent in src/server/mpc.ts.
+- [Phase ?]: [Phase 13]: awaitAnalytics?: boolean placed at TOP LEVEL of AnonAuthConfig (sibling of hooks), NOT nested under hooks. Locked decision per REQUIREMENTS line 11; controls library behavior, not hook behavior.
+- [Phase ?]: [Phase 13]: tsc-fail fixture in analytics-pii-leak.test.ts uses ForbiddenCase interface (not as-const tuple) to make extraPrefix optional across union members; variant strings template-interpolated into fixture source, so loss of literal narrowing is acceptable.
 
 ### Roadmap Evolution
 
@@ -144,6 +148,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-30T02:17:29.814Z
+Last session: 2026-04-30T02:38:09.113Z
 Stopped at: Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)
 Resume file: None
