@@ -3,6 +3,7 @@
  */
 
 import type pino from 'pino';
+import type { AnalyticsEvent } from '../server/analytics.js';
 
 // ============================================
 // HTTP Defense Configuration
@@ -54,8 +55,12 @@ export interface AnonAuthHooks {
   afterAuthSuccess?: (ctx: unknown) => Promise<unknown>;
   /** Phase 15 — fires inside /login/finish when sealingKeyHex was supplied. */
   backfillKeyBundle?: (ctx: unknown) => Promise<unknown>;
-  /** Phase 13 — fires fire-and-forget at lifecycle boundaries. */
-  onAuthEvent?: (event: unknown) => void | Promise<void>;
+  /** Phase 13 — fires fire-and-forget at lifecycle boundaries on the
+   *  passkey router, OAuth router, recovery endpoints, and account-delete.
+   *  Errors / rejected Promises are caught by the library and logged WARN
+   *  with redacted payload — they NEVER break the auth response. Default
+   *  fire-and-forget; opt-in to awaited emit via `AnonAuthConfig.awaitAnalytics`. */
+  onAuthEvent?: (event: AnalyticsEvent) => void | Promise<void>;
 }
 
 /**
@@ -193,6 +198,13 @@ export interface AnonAuthConfig {
    *  absent or `hooks: {}` → behavior identical to v0.6.1.
    *  Phase 11 lands the type; call sites wired in Phases 13–15. */
   hooks?: AnonAuthHooks;
+
+  /** Phase 13 ANALYTICS-04. When true, the library AWAITS `hooks.onAuthEvent`
+   *  before responding (synchronous-guarantee mode). Default false
+   *  (fire-and-forget). Adds latency proportional to hook execution time
+   *  when enabled — README documents this trade-off. Errors are STILL
+   *  swallowed in await mode (a throwing hook never breaks the response). */
+  awaitAnalytics?: boolean;
 }
 
 export interface MPCAccountConfig {
