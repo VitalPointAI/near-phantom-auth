@@ -262,6 +262,22 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
       let user = await db.getOAuthUserByProvider(provider, profile.providerId);
 
       if (user) {
+        // ░░ Phase 14 HOOK-04 fire point — Branch 1 (existing user, same provider) ░░
+        const sf = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+          authMethod: `oauth-${provider}` as const,
+          userId: user.id,
+          nearAccountId: user.nearAccountId,
+          provider,
+          req,
+        });
+
+        if (sf) {
+          // Pitfall 4 Option A: oauth.callback.success fires regardless of short-circuit.
+          await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+          // HOOK-05 short-circuit. NO Set-Cookie because createSession is skipped (T-14-02).
+          return res.status(sf.status).json({ ...sf.body, secondFactor: sf });
+        }
+
         // Existing user - update last active and create session
         await sessionManager.createSession(user.id, res, {
           ipAddress: req.ip,
@@ -298,6 +314,20 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
             connectedAt: new Date(),
           };
           await db.linkOAuthProvider(user.id, providerData);
+
+          // ░░ Phase 14 HOOK-04 fire point — Branch 2 (link by email) ░░
+          const sf = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+            authMethod: `oauth-${provider}` as const,
+            userId: user.id,
+            nearAccountId: user.nearAccountId,
+            provider,
+            req,
+          });
+
+          if (sf) {
+            await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+            return res.status(sf.status).json({ ...sf.body, secondFactor: sf });
+          }
 
           await sessionManager.createSession(user.id, res, {
             ipAddress: req.ip,
@@ -382,6 +412,25 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         } catch (error) {
           log.error({ err: error }, 'Failed to create recovery backup');
         }
+      }
+
+      // ░░ Phase 14 HOOK-04 fire point — Branch 3 (new user) ░░
+      // HARSHEST orphan trade-off in v0.7.0: NO transaction wrapper. A hook throw or
+      // continue:false leaves user (db.createOAuthUser at line ~315), MPC account
+      // (mpcManager.createAccount at line ~304), AND IPFS recovery blob (db.storeRecoveryData
+      // at line ~339) ALL committed. README in Plan 14-04 documents this verbatim
+      // (RESEARCH §Pitfall 6 / T-14-04). Mitigation: idempotent + non-throwing hooks.
+      const sf = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+        authMethod: `oauth-${provider}` as const,
+        userId: newUser.id,
+        nearAccountId: newUser.nearAccountId,
+        provider,
+        req,
+      });
+
+      if (sf) {
+        await emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+        return res.status(sf.status).json({ ...sf.body, secondFactor: sf });
       }
 
       // Create session
