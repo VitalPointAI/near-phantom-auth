@@ -17,6 +17,7 @@ import type { EmailService } from '../email.js';
 import { createOAuthManager, type OAuthManager, type OAuthProfile } from './index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
+import { wrapAnalytics } from '../analytics.js';
 import { validateBody } from '../validation/validateBody.js';
 import {
   oauthCallbackBodySchema,
@@ -60,6 +61,14 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
     ipfsRecovery,
     emailService,
   } = config;
+
+  // Phase 13 ANALYTICS-01/04: capture rpId + emit closure ONCE at factory
+  // construction (Pitfall 2 — never per-request). Mirrors src/server/router.ts.
+  const rpId = config.rpId ?? 'localhost';
+  const emit = wrapAnalytics(config.hooks?.onAuthEvent, {
+    logger: config.logger,
+    await: config.awaitAnalytics === true,
+  });
 
   // Create rate limiter instance
   const authRateConfig = config.rateLimiting?.auth ?? {};
@@ -236,6 +245,8 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
           userAgent: req.headers['user-agent'],
         });
 
+        emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
+
         return res.json({
           success: true,
           user: {
@@ -269,6 +280,8 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
           });
+
+          emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
 
           return res.json({
             success: true,
@@ -353,6 +366,8 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       });
+
+      emit({ type: 'oauth.callback.success', rpId, timestamp: Date.now(), provider });
 
       return res.json({
         success: true,
