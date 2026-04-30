@@ -25,11 +25,11 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 ### Hooks Scaffolding + 2FA Enrolment Hook (F2)
 
 - [x] **HOOK-01**: `AnonAuthConfig.hooks` field accepts an optional callbacks object: `{ afterAuthSuccess?, backfillKeyBundle?, onAuthEvent? }`. Threaded through `createAnonAuth → createRouter / createOAuthRouter`. All callbacks optional; absent hooks → behavior identical to v0.6.1.
-- [ ] **HOOK-02**: `hooks.afterAuthSuccess(ctx)` fires inside `/register/finish` after DB persist + MPC funding, before `sessionManager.createSession`. Hook receives `{ userId, codename, nearAccountId, authMethod: 'passkey-register', req }` and returns `Promise<{ continue: true } | { continue: false; status: number; body: object }>`. `continue: false` returns the consumer's `body` with the supplied `status` and skips session creation. Hook throw → DB rollback via existing `db.transaction()` wrapper.
-- [ ] **HOOK-03**: Same hook fires inside `/login/finish` (`authMethod: 'passkey-login'`) after passkey verify, before session creation. Same return-shape contract.
-- [ ] **HOOK-04**: Same hook fires inside OAuth `/callback` (`authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter'`) after token exchange + user resolution, before session creation. `provider` exposed on `ctx`.
-- [ ] **HOOK-05**: `/register/finish`, `/login/finish`, and OAuth callback responses include `secondFactor?: { status: number; body: object }` echo when hook returned `continue: false`; absent on `continue: true`.
-- [ ] **HOOK-06**: README documents the MPC-funded-but-rolled-back failure mode (MPC `createAccount` runs BEFORE the transaction, so a hook throw leaves an orphaned MPC account with no DB record). Recommended mitigation: hook is idempotent and non-throwing, returning `{ continue: false }` for soft failures.
+- [x] **HOOK-02**: `hooks.afterAuthSuccess(ctx)` fires inside `/register/finish` after DB persist + MPC funding, before `sessionManager.createSession`. Hook receives `{ userId, codename, nearAccountId, authMethod: 'passkey-register', req }` and returns `Promise<{ continue: true } | { continue: false; status: number; body: object }>`. `continue: false` returns the consumer's `body` with the supplied `status` and skips session creation. Hook throw → DB rollback via existing `db.transaction()` wrapper.
+- [x] **HOOK-03**: Same hook fires inside `/login/finish` (`authMethod: 'passkey-login'`) after passkey verify, before session creation. Same return-shape contract.
+- [x] **HOOK-04**: Same hook fires inside OAuth `/callback` (`authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter'`) after token exchange + user resolution, before session creation. `provider` exposed on `ctx`.
+- [x] **HOOK-05**: `/register/finish`, `/login/finish`, and OAuth callback responses include `secondFactor?: { status: number; body: object }` echo when hook returned `continue: false`; absent on `continue: true`.
+- [x] **HOOK-06**: README documents the MPC-funded-but-rolled-back failure mode (MPC `createAccount` runs BEFORE the transaction, so a hook throw leaves an orphaned MPC account with no DB record). Recommended mitigation: hook is idempotent and non-throwing, returning `{ continue: false }` for soft failures.
 
 ### Lazy-Backfill Hook (F3 — pass-through)
 
@@ -120,11 +120,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BACKUP-04 | Phase 11 | Complete |
 | BACKUP-05 | Phase 11 | Complete |
 | HOOK-01 | Phase 11 | Complete |
-| HOOK-02 | Phase 14 | Pending |
-| HOOK-03 | Phase 14 | Pending |
-| HOOK-04 | Phase 14 | Pending |
-| HOOK-05 | Phase 14 | Pending |
-| HOOK-06 | Phase 14 | Pending |
+| HOOK-02 | Phase 14 | Complete |
+| HOOK-03 | Phase 14 | Complete |
+| HOOK-04 | Phase 14 | Complete |
+| HOOK-05 | Phase 14 | Complete |
+| HOOK-06 | Phase 14 | Complete |
 | BACKFILL-01 | Phase 15 | Pending |
 | BACKFILL-02 | Phase 15 | Pending |
 | BACKFILL-03 | Phase 15 | Pending |

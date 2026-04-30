@@ -178,6 +178,6 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete    | 2026-04-29 |
 | 12. Multi-RP_ID Verification | v0.7.0 | 4/4 | Complete    | 2026-04-29 |
 | 13. Registration Analytics Hook | v0.7.0 | 5/5 | Complete   | 2026-04-30 |
-| 14. Second-Factor Enrolment Hook | v0.7.0 | 4/4 | Complete   | 2026-04-30 |
+| 14. Second-Factor Enrolment Hook | v0.7.0 | 4/4 | Complete    | 2026-04-30 |
 | 15. Lazy-Backfill Hook | v0.7.0 | 0/TBD | Not started | - |
 | 16. Release Prep | v0.7.0 | 0/TBD | Not started | - |

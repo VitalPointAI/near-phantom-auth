@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: executing
+status: ready_to_plan
 stopped_at: Phase 13 verified — ANALYTICS-01..06 closed, 11/11 must-haves, suite green (397/4/0). Ready to plan Phase 14 or run /gsd-extract-learnings 13.
 last_updated: "2026-04-30T10:53:07.509Z"
 last_activity: 2026-04-30 -- Phase 14 execution started
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 19
   completed_plans: 15
-  percent: 79
+  percent: 67
 ---
 
 # Project State
@@ -25,16 +25,16 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 ## Current Position
 
-Phase: 14 (second-factor-enrolment-hook) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 14
-Last activity: 2026-04-30 -- Phase 14 execution started
+Phase: 15
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-04-30
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 19 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
+- Total plans completed: 23 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
 - Average duration: -
 - Total execution time: 0 hours (v0.7.0 not started)
 
@@ -47,7 +47,7 @@ Last activity: 2026-04-30 -- Phase 14 execution started
 | 11 | 6 | - | - |
 | 12 | 4 | - | - |
 | 13 | TBD | - | - |
-| 14 | TBD | - | - |
+| 14 | 4 | - | - |
 | 15 | TBD | - | - |
 | 16 | TBD | - | - |
 
