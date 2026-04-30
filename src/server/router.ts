@@ -19,6 +19,7 @@ import pino from 'pino';
 import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
 import { deriveBackupEligibility } from './backup.js';
+import { wrapAnalytics } from './analytics.js';
 import { validateBody } from './validation/validateBody.js';
 import {
   registerStartBodySchema,
@@ -71,6 +72,15 @@ export function createRouter(config: RouterConfig): Router {
     walletRecovery,
     ipfsRecovery,
   } = config;
+
+  // Phase 13 ANALYTICS-01/04: capture rpId + emit closure ONCE at factory
+  // construction (Pitfall 2 — never per-request). `emit` is a no-op when
+  // `config.hooks?.onAuthEvent` is undefined (matches v0.6.1 behavior).
+  const rpId = config.rpId ?? 'localhost';
+  const emit = wrapAnalytics(config.hooks?.onAuthEvent, {
+    logger: config.logger,
+    await: config.awaitAnalytics === true,
+  });
 
   // Create rate limiter instances
   const authRateConfig = config.rateLimiting?.auth ?? {};
@@ -141,6 +151,8 @@ export function createRouter(config: RouterConfig): Router {
       const body = validateBody(registerStartBodySchema, req, res);
       if (!body) return;
 
+      emit({ type: 'register.start', rpId, timestamp: Date.now() });
+
       // Generate temporary user ID for registration
       const tempUserId = crypto.randomUUID();
 
@@ -194,6 +206,7 @@ export function createRouter(config: RouterConfig): Router {
       const { challengeId, response, tempUserId, codename } = body;
 
       if (!isValidCodename(codename)) {
+        emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'invalid-codename' });
         return res.status(400).json({ error: 'Invalid codename format' });
       }
 
@@ -204,6 +217,7 @@ export function createRouter(config: RouterConfig): Router {
       );
 
       if (!verified || !passkeyData) {
+        emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'passkey-verification-failed' });
         return res.status(400).json({ error: 'Passkey verification failed' });
       }
 
@@ -243,6 +257,13 @@ export function createRouter(config: RouterConfig): Router {
         ? await db.transaction(doRegistration)
         : await doRegistration(db);
 
+      emit({
+        type: 'register.finish.success',
+        rpId,
+        timestamp: Date.now(),
+        backupEligible: deriveBackupEligibility(passkeyData.deviceType),
+      });
+
       res.json({
         success: true,
         codename: user.codename,
@@ -254,6 +275,7 @@ export function createRouter(config: RouterConfig): Router {
       });
     } catch (error) {
       log.error({ err: error }, 'Registration finish error');
+      emit({ type: 'register.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
       res.status(500).json({ error: 'Registration failed' });
     }
   });
@@ -272,6 +294,13 @@ export function createRouter(config: RouterConfig): Router {
       if (!body) return;
 
       const { codename } = body;
+
+      emit({
+        type: 'login.start',
+        rpId,
+        timestamp: Date.now(),
+        codenameProvided: !!codename,
+      });
 
       let userId: string | undefined;
 
@@ -309,12 +338,14 @@ export function createRouter(config: RouterConfig): Router {
       );
 
       if (!verified || !userId) {
+        emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'auth-failed' });
         return res.status(401).json({ error: 'Authentication failed' });
       }
 
       const user = await db.getUserById(userId);
 
       if (!user) {
+        emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'user-not-found' });
         return res.status(404).json({ error: 'User not found' });
       }
 
@@ -327,6 +358,15 @@ export function createRouter(config: RouterConfig): Router {
       // Per D-LOGIN-NEARACCOUNTID: keep existing { success, codename } shape — do NOT add nearAccountId.
       // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
       // path with no passkeyData still returns a valid { success, codename } response.
+      if (passkeyData) {
+        emit({
+          type: 'login.finish.success',
+          rpId,
+          timestamp: Date.now(),
+          backupEligible: deriveBackupEligibility(passkeyData.deviceType),
+        });
+      }
+
       res.json({
         success: true,
         codename: user.codename,
@@ -339,6 +379,7 @@ export function createRouter(config: RouterConfig): Router {
       });
     } catch (error) {
       log.error({ err: error }, 'Login finish error');
+      emit({ type: 'login.finish.failure', rpId, timestamp: Date.now(), reason: 'internal-error' });
       res.status(500).json({ error: 'Authentication failed' });
     }
   });
