@@ -12,7 +12,7 @@ Every security-sensitive code path must be correct, tested, and production-safe.
 
 **Shipped version: v0.6.1** (2026-04-29) — `@vitalpoint/near-phantom-auth@0.6.1` is live on the npm registry.
 
-**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phase 12 complete: multi-RP_ID verification — paired-tuple `relatedOrigins` config, startup-validator with 6 failure branches, standalone-export type widening, README cross-domain contract).
+**Active milestone:** v0.7.0 — Consumer Hooks & Recovery Hardening (Phase 14 complete: second-factor enrolment hook — `hooks.afterAuthSuccess` discriminated-union contract wired across passkey register, passkey login, and 3 OAuth callback branches; HOOK-05 secondFactor echo on short-circuit; README HOOK-06 orphan-MPC trade-off documented; 47 new it() blocks across 4 test files).
 
 ## Current Milestone: v0.7.0 Consumer Hooks & Recovery Hardening
 
@@ -168,4 +168,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 — Phase 12 complete (RPID-01..05 shipped: `RelatedOrigin` paired-tuple type, `AnonAuthConfig.rp.relatedOrigins`, `validateRelatedOrigins` startup helper, conditional-spread integration in `passkey.ts`, standalone-export widening to `string | string[]`, README Cross-Domain Passkeys section with consumer-owned `/.well-known/webauthn` contract). Last shipped: v0.6.1 (2026-04-29). Next: Phase 13 registration analytics hook.*
+*Last updated: 2026-04-30 — Phase 14 complete (HOOK-02..06 shipped: `AnonAuthHooks.afterAuthSuccess` tightened from `(ctx: unknown) => Promise<unknown>` to a discriminated-union signature in `src/types/index.ts`, fire points wired in `src/server/router.ts` × 2 (register-finish inside `db.transaction()`, login-finish without transaction wrapper) and `src/server/oauth/router.ts` × 3 callback branches via `runOAuthHook` helper, HOOK-05 `secondFactor: { status, body }` echo on short-circuit responses skips `sessionManager.createSession` (T-14-02 cookie leak guard), README "Second-Factor Enrolment Hook (v0.7.0)" section with HOOK-06 orphan-MPC trade-off canonical copy ready for Phase 16 RELEASE-01 lift, change-detector test encodes "MPC before transaction" via `invocationCallOrder`). Test suite: 444/4 (was 397/4 + 47 new it() blocks). Last shipped: v0.6.1 (2026-04-29). Next: Phase 15 lazy-backfill hook.*
