@@ -131,7 +131,11 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. The same hook fires inside the OAuth callback (`authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter'`) after token exchange + user resolution, before session creation — `provider` is exposed on the hook context.
   4. A hook returning `{ continue: false, status, body }` produces a response that includes a `secondFactor: { status, body }` echo on the corresponding endpoint; `continue: true` omits the echo.
   5. A consumer reading the README finds the MPC-funded-but-rolled-back failure mode explicitly documented (MPC `createAccount` runs BEFORE the transaction, so a hook throw leaves an orphaned MPC account with no DB record), with the recommended mitigation (idempotent, non-throwing hooks returning `{ continue: false }` for soft failures).
-**Plans**: TBD
+**Plans:** 4 plans
+- [ ] 14-01-PLAN.md (Wave 0) — Type contract + Wave-0 test stubs: tighten `AnonAuthHooks.afterAuthSuccess` discriminated-union signature, add `secondFactor?` echo to RegistrationFinishResponse + AuthenticationFinishResponse, re-export AfterAuthSuccessCtx/Result/Provider from /server, drop 4 `it.todo` test stubs locking the requirement → test-file 1:1 map
+- [ ] 14-02-PLAN.md (Wave 1, parallel with 14-03) — Passkey router fire points: HOOK-02 (register-finish, inside doRegistration → DB rollback on throw) + HOOK-03 (login-finish, no transaction wrapper) + HOOK-05 short-circuit response shape; locked Pitfall 4 Option A (success analytics fires regardless of short-circuit)
+- [ ] 14-03-PLAN.md (Wave 1, parallel with 14-02) — OAuth router × 3 branches: local `runOAuthHook` helper + HOOK-04 fire points on existing-same-provider, link-by-email, and new-user branches + HOOK-05 short-circuit; OAuth Branch 3 widened orphan trade-off (no transaction wrapper at all → user + MPC + IPFS all commit on continue:false)
+- [ ] 14-04-PLAN.md (Wave 2) — Integration tests + README: fill in 4 second-factor-*.test.ts files (≥37 it() blocks total) + add canonical "Second-Factor Enrolment Hook (v0.7.0)" README section (HOOK-06 orphan trade-off prose; Phase 16 RELEASE-01 lifts verbatim); change-detector test encodes "MPC before transaction" call-order in CI
 
 ### Phase 15: Lazy-Backfill Hook
 **Milestone:** v0.7.0
@@ -174,6 +178,6 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete    | 2026-04-29 |
 | 12. Multi-RP_ID Verification | v0.7.0 | 4/4 | Complete    | 2026-04-29 |
 | 13. Registration Analytics Hook | v0.7.0 | 5/5 | Complete   | 2026-04-30 |
-| 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |
+| 14. Second-Factor Enrolment Hook | v0.7.0 | 0/4 | Not started | - |
 | 15. Lazy-Backfill Hook | v0.7.0 | 0/TBD | Not started | - |
 | 16. Release Prep | v0.7.0 | 0/TBD | Not started | - |
