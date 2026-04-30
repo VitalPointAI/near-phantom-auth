@@ -105,20 +105,24 @@ describe('HOOK-01: hooks threaded through createAnonAuth (no call sites wired)',
   });
 });
 
-describe('HOOK-01: invariant — zero call sites in src/server during Phase 11', () => {
+describe('HOOK-01: hook call-site invariants (evolving across phases)', () => {
   // Per 11-RESEARCH.md Open Question #3 recommendation.
-  // These tests will fail in Phase 13/14/15 when call sites are intentionally wired —
-  // at that point the test should be updated to reflect the new invariant.
+  // Originally a Phase 11 zero-invariant; updated as call sites land:
+  //   - Phase 14: afterAuthSuccess wired in router.ts (register-finish + login-finish).
+  //     OAuth router invokes via a local helper (runOAuthHook), which does not match this grep.
+  //   - Phase 15: backfillKeyBundle will be wired (still 0 here).
+  //   - Phase 13: onAuthEvent is invoked via wrapAnalytics(), not as hooks.onAuthEvent(...),
+  //     so this grep still returns 0.
 
-  it('grep finds zero call sites for hooks.afterAuthSuccess(', () => {
+  it('grep finds 2 direct call sites for hooks.afterAuthSuccess( in src/server (Phase 14 wired)', () => {
     const out = execSync(
       'grep -r "hooks\\.afterAuthSuccess(" src/server | wc -l',
       { encoding: 'utf-8' }
     ).trim();
-    expect(out).toBe('0');
+    expect(out).toBe('2');
   });
 
-  it('grep finds zero call sites for hooks.backfillKeyBundle(', () => {
+  it('grep finds zero call sites for hooks.backfillKeyBundle( (lands in Phase 15)', () => {
     const out = execSync(
       'grep -r "hooks\\.backfillKeyBundle(" src/server | wc -l',
       { encoding: 'utf-8' }
@@ -126,7 +130,7 @@ describe('HOOK-01: invariant — zero call sites in src/server during Phase 11',
     expect(out).toBe('0');
   });
 
-  it('grep finds zero call sites for hooks.onAuthEvent(', () => {
+  it('grep finds zero direct call sites for hooks.onAuthEvent( (Phase 13 invokes via wrapAnalytics)', () => {
     const out = execSync(
       'grep -r "hooks\\.onAuthEvent(" src/server | wc -l',
       { encoding: 'utf-8' }

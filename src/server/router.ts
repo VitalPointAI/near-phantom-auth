@@ -267,7 +267,7 @@ export function createRouter(config: RouterConfig): Router {
             nearAccountId: user.nearAccountId,
             req,
           });
-          if (!result.continue) {
+          if (result.continue === false) {
             secondFactor = { status: result.status, body: result.body };
             // SHORT-CIRCUIT — return without session creation. The transaction wrapper
             // sees a successful return (no throw), so createUser + createPasskey rows
@@ -410,7 +410,7 @@ export function createRouter(config: RouterConfig): Router {
           nearAccountId: user.nearAccountId,
           req,
         });
-        if (!result.continue) {
+        if (result.continue === false) {
           secondFactor = { status: result.status, body: result.body };
         }
       }

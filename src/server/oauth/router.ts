@@ -89,7 +89,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
   ): Promise<{ status: number; body: Record<string, unknown> } | undefined> {
     if (!hook) return undefined;
     const result = await hook(ctx);
-    if (result.continue) return undefined;
+    if (result.continue === true) return undefined;
     return { status: result.status, body: result.body };
   }
 
