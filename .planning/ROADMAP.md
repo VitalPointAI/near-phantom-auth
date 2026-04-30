@@ -113,12 +113,12 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   3. A consumer whose `onAuthEvent` hook throws or hangs sees their auth requests succeed normally — `wrapAnalytics` swallows errors with a redacted WARN-level pino log; a 5-second hook does NOT add 5 seconds to login latency.
   4. A consumer setting `awaitAnalytics: true` at the top level of `AnonAuthConfig` switches `wrapAnalytics` into awaited-emit mode for synchronous-guarantee use cases; default `false` (fire-and-forget).
   5. A future change that adds a key not in the allowed-fields whitelist (`type`, `rpId`, `timestamp`, `provider`, `backupEligible`, static-enum `reason`, `codenameProvided`) to any event variant fails the snapshot-based PII assertion test in CI.
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 - [x] 13-01-PLAN.md (Wave 0) — Test scaffolding: 6 stub test files (analytics-types/pii-leak/pii-snapshot/lifecycle/oauth/latency) with `it.todo` slots covering all ANALYTICS-01..06 assertions
 - [x] 13-02-PLAN.md (Wave 1) — Analytics module + config threading: `src/server/analytics.ts` (AnalyticsEvent union, ALLOWED_EVENT_FIELDS, wrapAnalytics, redactErrorMessage); `awaitAnalytics?` top-level config; lockstep threading into both router factories; replace 3 Wave-0 stubs (types/pii-leak/pii-snapshot)
 - [x] 13-03-PLAN.md (Wave 2) — Passkey router emit points: 11 emit calls in `src/server/router.ts` (register × 5, login × 5, recovery × 4, account.delete) + analytics-lifecycle.test.ts implementation; covers ANALYTICS-01 (passkey/recovery/delete) + ANALYTICS-06
 - [x] 13-04-PLAN.md (Wave 2) — OAuth router emit points: 3 `oauth.callback.success` calls in `src/server/oauth/router.ts` (existing-same-provider, link-by-email, new-user) + analytics-oauth.test.ts implementation; parallel with 13-03
-- [ ] 13-05-PLAN.md (Wave 3) — Latency + error-swallow + await-mode tests: analytics-latency.test.ts implementation (5s hook < 500ms in FF, throw → 200 OK + redacted WARN, await mode adds ~5s, errors still swallowed in await); covers ANALYTICS-04 in full
+- [x] 13-05-PLAN.md (Wave 3) — Latency + error-swallow + await-mode tests: analytics-latency.test.ts implementation (5s hook < 500ms in FF, throw → 200 OK + redacted WARN, await mode adds ~5s, errors still swallowed in await); covers ANALYTICS-04 in full
 
 ### Phase 14: Second-Factor Enrolment Hook
 **Milestone:** v0.7.0
@@ -173,7 +173,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 10. MPCAccountManager | v0.6.1 | 6/6 | Complete | 2026-04-29 |
 | 11. Backup-Eligibility Flags + Hooks Scaffolding | v0.7.0 | 6/6 | Complete    | 2026-04-29 |
 | 12. Multi-RP_ID Verification | v0.7.0 | 4/4 | Complete    | 2026-04-29 |
-| 13. Registration Analytics Hook | v0.7.0 | 4/5 | In Progress|  |
+| 13. Registration Analytics Hook | v0.7.0 | 5/5 | Complete   | 2026-04-30 |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 0/TBD | Not started | - |
 | 15. Lazy-Backfill Hook | v0.7.0 | 0/TBD | Not started | - |
 | 16. Release Prep | v0.7.0 | 0/TBD | Not started | - |

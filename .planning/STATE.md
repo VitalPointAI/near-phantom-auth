@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
-status: executing
-stopped_at: "Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)"
-last_updated: "2026-04-30T03:09:56.593Z"
+status: verifying
+stopped_at: "Completed 13-05-PLAN.md: ANALYTICS-04 latency + error-swallow + await-mode E2E tests; Phase 13 ANALYTICS-01..06 ALL CLOSED; ready for /gsd-verify-work 13"
+last_updated: "2026-04-30T03:22:42.486Z"
 last_activity: 2026-04-30
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 
 Phase: 13 (registration-analytics-hook) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-30
 
 ## Performance Metrics
@@ -65,6 +65,7 @@ Last activity: 2026-04-30
 | Phase 13 P02 | 14min | 5 tasks | 8 files |
 | Phase 13 P03 | 11m | 3 tasks | 2 files |
 | Phase 13 P04 | 5min | 2 tasks | 2 files |
+| Phase 13 P05 | 6m31s | - tasks | - files |
 
 ## Accumulated Context
 
@@ -99,6 +100,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase ?]: [Phase 13]: tsc-fail fixture in analytics-pii-leak.test.ts uses ForbiddenCase interface (not as-const tuple) to make extraPrefix optional across union members; variant strings template-interpolated into fixture source, so loss of literal narrowing is acceptable.
 - [Phase ?]: [Phase 13]: emit closure captured ONCE at createRouter() factory entry (Pitfall 2 — never per-request); 15 inline emit() call sites across all 11 unique lifecycle event variants; static-enum reasons at every catch site (NEVER Error.message); login.start emits boolean codenameProvided, never codename string.
 - [Phase ?]: [Phase 13]: analytics-lifecycle.test.ts mock harness mirrors registration-auth.test.ts + recovery.test.ts verbatim — onAuthEvent vi.fn() spy passed via hooks, findEvent(spy, type) helper + expectNoPII(event) defense-in-depth scan for 6 forbidden PII keys. Sets canonical pattern for Plan 04 (OAuth) + Plan 05 (latency) test harnesses.
+- [Phase ?]: [Phase 13]: redactErrorMessage frame-line filter (V8 stack format quirk) — original slice(0,2) was leaking Error.message via line 1 of err.stack; fixed to filter /^\s+at\s/ frame lines before slicing 2 entries; T-13-25 mitigation now actually mitigates
+- [Phase ?]: [Phase 13]: await emit() applied to all 18 lifecycle call sites (15 in router.ts + 3 in oauth/router.ts) — wrapAnalytics returns Promise<void> in await mode; without await, awaitAnalytics:true silently degraded to fire-and-forget; fire-and-forget unaffected; test asserts elapsed > 4500ms in await mode
+- [Phase ?]: [Phase 13]: pino capture stream uses level: 'warn' to filter non-WARN noise; setImmediate yield required after fire-and-forget rejected-Promise tests to flush .catch handler before assertion
+- [Phase ?]: [Phase 13]: end-to-end latency contract pattern (performance.now() bounds with 5s hook < 500ms FF / > 4500ms await) is canonical for v0.7.0 hook surfaces; Phase 14 afterAuthSuccess and Phase 15 backfillKeyBundle should mirror
 
 ### Roadmap Evolution
 
@@ -152,6 +157,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-30T03:09:56.585Z
-Stopped at: Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)
+Last session: 2026-04-30T03:22:42.479Z
+Stopped at: Completed 13-05-PLAN.md: ANALYTICS-04 latency + error-swallow + await-mode E2E tests; Phase 13 ANALYTICS-01..06 ALL CLOSED; ready for /gsd-verify-work 13
 Resume file: None
