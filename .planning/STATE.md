@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
-stopped_at: "Completed 11-06-PLAN.md: BACKUP-04 AnonAuthState passkeyBackedUp + passkeyBackupEligible"
-last_updated: "2026-04-30T02:06:50.135Z"
-last_activity: 2026-04-30 -- Phase 13 execution started
+stopped_at: "Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)"
+last_updated: "2026-04-30T02:17:40.971Z"
+last_activity: 2026-04-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 10
-  percent: 67
+  completed_plans: 11
+  percent: 73
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-29)
 ## Current Position
 
 Phase: 13 (registration-analytics-hook) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 13
-Last activity: 2026-04-30 -- Phase 13 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-04-30
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Last activity: 2026-04-30 -- Phase 13 execution started
 | Phase 11 P04 | 9min | 2 tasks | 2 files |
 | Phase 11 P05 | 8min | 3 tasks | 6 files |
 | Phase 11 P06 | 2min | 1 tasks | 1 files |
+| Phase 13 P01 | 3min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [Phase 11]: backupEligible placed between backedUp and transports in verifyRegistration() credential shape — semantic adjacency, existing field order preserved — Mirrors plan spec for BACKUP-03; field-level JSDoc on each of deviceType/backedUp/backupEligible chosen over function-level only (Pitfall 7 defense at call-site)
 - [Phase ?]: passkey field appended at END of /register/finish literal per Pattern S4 (additive, no reorder)
 - [Phase ?]: BACKUP-04: AnonAuthState passkeyBackedUp/passkeyBackupEligible populated from result.passkey on register/login finish — no /session round-trip needed
+- [Phase 13]: Phase 13 Wave 0 stub pattern: 6 analytics test files with 51 it.todo placeholders, header docblocks citing requirement IDs and analog files, only 'import { describe, it } from vitest' allowed (no production imports). Locks requirement->test-file 1:1 map for Plans 02-05 — Vitest registers it.todo as skipped, so stubs prove the file is wired without false-positive assertions; header docblocks pre-cite the analog (mpc-treasury-leak.test.ts:197-242, exports.test.ts:48-82, registration-auth.test.ts:18-211) so Wave 1+ executors do 1:1 swap, no re-discovery
 
 ### Roadmap Evolution
 
@@ -142,6 +144,6 @@ To resolve later: run `/gsd-verify-work 09` against each scenario in 09-HUMAN-UA
 
 ## Session Continuity
 
-Last session: 2026-04-29T20:42:41.028Z
-Stopped at: Completed 11-06-PLAN.md: BACKUP-04 AnonAuthState passkeyBackedUp + passkeyBackupEligible
+Last session: 2026-04-30T02:17:29.814Z
+Stopped at: Completed 13-01-PLAN.md: Wave 0 analytics test stubs (51 it.todo slots, 6 files)
 Resume file: None
