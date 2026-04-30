@@ -3,6 +3,7 @@
  */
 
 import type pino from 'pino';
+import type { Request } from 'express';
 import type { AnalyticsEvent } from '../server/analytics.js';
 
 // ============================================
@@ -50,9 +51,105 @@ export interface CsrfConfig {
  *   - `onAuthEvent` — Phase 13 (ANALYTICS-01..06): fire-and-forget at lifecycle
  *     boundaries; type-level PII whitelist enforced via tsc-fail fixture.
  */
+/**
+ * v0.7.0 — Phase 14 HOOK-04. OAuth provider literal mirror.
+ * Mirrors `OauthProvider` in `src/server/analytics.ts:39` to avoid a
+ * circular import between `types/index.ts` and `server/analytics.ts`.
+ */
+export type AfterAuthSuccessProvider = 'google' | 'github' | 'twitter';
+
+/**
+ * v0.7.0 — Phase 14 HOOK-02..04. Hook context discriminated union.
+ *
+ * Each variant carries the fields the consumer's hook needs to make a
+ * second-factor decision. The discriminator is `authMethod`. The
+ * `provider` field exists ONLY on the OAuth variant (Pitfall 5: putting
+ * `provider` on every variant defeats type narrowing).
+ *
+ * `req` is the bare Express `Request`. The library does NOT sanitize
+ * this surface — consumer's hook is consumer's code; what they read
+ * from `req` (cookies, headers, body) is their responsibility.
+ *
+ * `codename` is REQUIRED on passkey variants and OPTIONAL on the OAuth
+ * variant because `OAuthUser` (src/types/index.ts:410-422) does not
+ * carry a codename in v0.7.0. Field reserved for future homogenization.
+ *
+ * SECURITY (T-14-03): `userId`, `codename`, `nearAccountId` are surfaced
+ * to the CONSUMER (intended). The library MUST NOT log or telemetrize
+ * these fields — they are part of the anonymity invariant for library
+ * emissions but are exposed to the consumer's hook by design.
+ */
+export type AfterAuthSuccessCtx =
+  | {
+      authMethod: 'passkey-register';
+      userId: string;
+      codename: string;
+      nearAccountId: string;
+      req: Request;
+    }
+  | {
+      authMethod: 'passkey-login';
+      userId: string;
+      codename: string;
+      nearAccountId: string;
+      req: Request;
+    }
+  | {
+      authMethod: 'oauth-google' | 'oauth-github' | 'oauth-twitter';
+      userId: string;
+      /** OAuth users do not currently have a codename in v0.7.0;
+       *  field reserved for future homogenization. */
+      codename?: string;
+      nearAccountId: string;
+      provider: AfterAuthSuccessProvider;
+      req: Request;
+    };
+
+/**
+ * v0.7.0 — Phase 14 HOOK-02..05. Hook return discriminated union.
+ *
+ * `continue: true` allows the normal response (session is created,
+ *   `secondFactor` is OMITTED from the response).
+ * `continue: false` short-circuits: response carries the consumer's
+ *   `body` spread into the top level PLUS a structured
+ *   `secondFactor: { status, body }` echo (HOOK-05). NO session is
+ *   created and NO `Set-Cookie` header is issued (Pitfall 2 — T-14-02).
+ *
+ * `body: Record<string, unknown>` is tighter than `object` (which
+ * accepts Date / RegExp etc. that `res.json()` does not handle
+ * predictably).
+ */
+export type AfterAuthSuccessResult =
+  | { continue: true }
+  | { continue: false; status: number; body: Record<string, unknown> };
+
 export interface AnonAuthHooks {
-  /** Phase 14 — fires inside /register/finish, /login/finish, OAuth callback. */
-  afterAuthSuccess?: (ctx: unknown) => Promise<unknown>;
+  /**
+   * v0.7.0 — Phase 14 HOOK-02..06. Fires INSIDE /register/finish (after
+   * passkey verify + DB persist + MPC funding), inside /login/finish (after
+   * passkey verify + getUserById), and inside OAuth /callback × 3 success
+   * branches (after token exchange + user resolution). Always fires BEFORE
+   * `sessionManager.createSession`.
+   *
+   * Returning `{ continue: false, status, body }` short-circuits the
+   * response with consumer's body spread into the top level + a
+   * `secondFactor: { status, body }` echo. NO session is created.
+   *
+   * A throw on the register-finish path triggers the existing
+   * `db.transaction()` rollback wrapper. On login-finish and OAuth, a
+   * throw produces a 500 — no DB writes happen between verify and
+   * session, so no rollback is needed (login) or no transaction wrapper
+   * exists at all (OAuth — see HOOK-06 + Pitfall 6).
+   *
+   * WARNING (HOOK-06): `mpcManager.createAccount` runs BEFORE the DB
+   * transaction opens on register-finish (router.ts:225); on the OAuth
+   * new-user branch (oauth/router.ts:304) it runs without any
+   * transaction wrapper. A hook throw OR a `continue: false` AFTER MPC
+   * funding leaves an orphaned funded NEAR implicit account with no DB
+   * record. Consumers MUST be idempotent and prefer `continue: false`
+   * over throwing for soft failures.
+   */
+  afterAuthSuccess?: (ctx: AfterAuthSuccessCtx) => Promise<AfterAuthSuccessResult>;
   /** Phase 15 — fires inside /login/finish when sealingKeyHex was supplied. */
   backfillKeyBundle?: (ctx: unknown) => Promise<unknown>;
   /** Phase 13 — fires fire-and-forget at lifecycle boundaries on the
@@ -527,6 +624,17 @@ export interface RegistrationFinishResponse {
   /** v0.7.0 — BACKUP-01 additive nested key. Optional for forward-compat with
    *  degraded-path responses that may omit the flags. */
   passkey?: { backedUp: boolean; backupEligible: boolean };
+  /** v0.7.0 — HOOK-05 echo of consumer's hook short-circuit. Present
+   *  when `hooks.afterAuthSuccess` returned `{ continue: false, status,
+   *  body }`; absent on `continue: true`. The library spreads
+   *  consumer's `body` fields into the response AND echoes the
+   *  structured descriptor here so consumers can detect short-circuit
+   *  on the response body alone (without inspecting HTTP status).
+   *
+   *  If consumer's `body` happens to include a key named
+   *  `secondFactor`, the echo wins — the echo is the canonical source
+   *  of short-circuit metadata. */
+  secondFactor?: { status: number; body: Record<string, unknown> };
 }
 
 export interface AuthenticationStartResponse {
@@ -540,6 +648,9 @@ export interface AuthenticationFinishResponse {
   /** v0.7.0 — BACKUP-02 additive nested key; backedUp is RE-READ from the
    *  assertion on every login (BS bit may flip). */
   passkey?: { backedUp: boolean; backupEligible: boolean };
+  /** v0.7.0 — HOOK-05 echo of consumer's hook short-circuit. Same
+   *  contract as `RegistrationFinishResponse.secondFactor`. */
+  secondFactor?: { status: number; body: Record<string, unknown> };
 }
 
 export interface RecoveryWalletLinkResponse {
