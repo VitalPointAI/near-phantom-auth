@@ -56,8 +56,8 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 - [ ] **Phase 12: Multi-RP_ID Verification** (TBD plans) — `rp.relatedOrigins` paired-tuple config; `expectedOrigin` / `expectedRPID` widened to array form; R3 origin-spoofing defense (startup validation, max 5 entries)
 - [ ] **Phase 13: Registration Analytics Hook** (TBD plans) — `hooks.onAuthEvent` fire-and-forget callback with type-level PII whitelist; tsc-fail fixture (R2 highest-priority defense, lands before F2/F3 so subsequent phases are tested against it); `awaitAnalytics: boolean` opt-in
 - [ ] **Phase 14: Second-Factor Enrolment Hook** (TBD plans) — `hooks.afterAuthSuccess` fires inline inside transaction, blocks session creation, on passkey-register / passkey-login / oauth-callback (3 instrumentation sites); MPC-funded-but-rolled-back trade-off documented
-- [ ] **Phase 15: Lazy-Backfill Hook** (4 plans) — `hooks.backfillKeyBundle` pass-through; library does NOT persist bundles or migrate IPFS recovery blobs; backfill failure NEVER blocks login (BACKFILL-03 contract)
-- [ ] **Phase 16: Release Prep** (TBD plans) — README "Hooks (v0.7.0)" section, CHANGELOG, version bump to 0.7.0, build, smoke install, npm publish, git tag, backwards-compat assertion
+- [x] **Phase 15: Lazy-Backfill Hook** (4/4 plans) — completed 2026-04-30; `hooks.backfillKeyBundle` pass-through; library does NOT persist bundles or migrate IPFS recovery blobs; backfill failure NEVER blocks login (BACKFILL-03 contract)
+- [ ] **Phase 16: Release Prep** (4 plans) — README "Hooks (v0.7.0)" section, CHANGELOG, version bump to 0.7.0, build, smoke install, npm publish, git tag, backwards-compat assertion
 
 **Total v1 requirements:** 30 (BACKUP-01..05, HOOK-01..06, BACKFILL-01..04, RPID-01..05, ANALYTICS-01..06, RELEASE-01..04)
 
@@ -147,11 +147,11 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   2. A consumer's hook returning `{ backfilled: true, reason: 'completed' }` (or any of `'already-current' | 'no-legacy-data' | 'completed' | 'skipped'`) sees that result echoed on the response under an additive `backfill: { backfilled, reason }` key.
   3. A hook that throws does NOT block login — the library catches, logs WARN with redacted error, and returns the normal login response with `backfill: { backfilled: false, reason: 'skipped' }`. Verified by a test that asserts a throwing hook still produces a 200 OK login.
   4. A consumer reading the README finds the consumer-owns-schema contract documented: library does not persist key bundles, does not run a transaction around backfill, and does not migrate existing IPFS recovery blobs (those remain consumer-owned and may be orphaned if the consumer's backfill replaces the recovery method — dual-recovery semantics explicit).
-**Plans:** 4 plans
-- [ ] 15-01-PLAN.md (Wave 0) — BACKFILL-01..03 type contract: tighten AnonAuthHooks.backfillKeyBundle, add BackfillKeyBundleCtx/Result/Reason, append backfill? to AuthenticationFinishResponse, /server re-export, 2 Wave-0 stub test files (backfill-login + backfill-redaction)
-- [ ] 15-02-PLAN.md (Wave 1) — BACKFILL-01..03 wire-into-/login/finish: gated on body.sealingKeyHex, nested try/catch + redactErrorMessage WARN log + skipped fallback, response spread-guard echo, sequential-fire ordering after Phase 14 afterAuthSuccess
-- [ ] 15-03-PLAN.md (Wave 2, parallel with 15-04) — BACKFILL-01..03 integration tests: backfill-login.test.ts (golden path + silent skip + 4-reason echo + containment + Phase 14/15 co-existence) + backfill-redaction.test.ts (T-15-03 pino-capture change-detector — zero hex substring + redactErrorMessage envelope shape + worst-case Error.message redaction)
-- [ ] 15-04-PLAN.md (Wave 2, parallel with 15-03) — BACKFILL-04 README section: "Lazy-Backfill Hook (v0.7.0)" with consumer-owns-schema contract, dual-recovery + IPFS-orphan footnote (3-option framing), full type signatures, copy-pasteable consumer example, T-15-02 known limitation (Phase 16 RELEASE-01 lifts verbatim)
+**Plans:** 4/4 plans complete
+- [x] 15-01-PLAN.md (Wave 0) — BACKFILL-01..03 type contract: tighten AnonAuthHooks.backfillKeyBundle, add BackfillKeyBundleCtx/Result/Reason, append backfill? to AuthenticationFinishResponse, /server re-export, 2 Wave-0 stub test files (backfill-login + backfill-redaction)
+- [x] 15-02-PLAN.md (Wave 1) — BACKFILL-01..03 wire-into-/login/finish: gated on body.sealingKeyHex, nested try/catch + redactErrorMessage WARN log + skipped fallback, response spread-guard echo, sequential-fire ordering after Phase 14 afterAuthSuccess
+- [x] 15-03-PLAN.md (Wave 2, parallel with 15-04) — BACKFILL-01..03 integration tests: backfill-login.test.ts (golden path + silent skip + 4-reason echo + containment + Phase 14/15 co-existence) + backfill-redaction.test.ts (T-15-03 pino-capture change-detector — zero hex substring + redactErrorMessage envelope shape + worst-case Error.message redaction)
+- [x] 15-04-PLAN.md (Wave 2, parallel with 15-03) — BACKFILL-04 README section: "Lazy-Backfill Hook (v0.7.0)" with consumer-owns-schema contract, dual-recovery + IPFS-orphan footnote (3-option framing), full type signatures, copy-pasteable consumer example, T-15-02 known limitation (Phase 16 RELEASE-01 lifts verbatim)
 
 ### Phase 16: Release Prep
 **Milestone:** v0.7.0
@@ -163,7 +163,11 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
   2. A reader of CHANGELOG.md finds a v0.7.0 entry with feature highlights (5 hooks/features) and an explicit additive-only callout (no breaking changes from v0.6.1).
   3. A consumer running `npm install @vitalpoint/near-phantom-auth@0.7.0` in a fresh fixture sees `import { createAnonAuth } from '@vitalpoint/near-phantom-auth/server'` resolve, with the new hook surface (`hooks.afterAuthSuccess`, `hooks.backfillKeyBundle`, `hooks.onAuthEvent`, `awaitAnalytics`, `rp.relatedOrigins`) visible in TypeScript autocomplete.
   4. The `@vitalpoint/near-phantom-auth@0.7.0` artifact is published on the npm registry (latest dist-tag), the `v0.7.0` git tag is pushed to origin, and existing v0.6.1 consumer fixtures continue to compile and run unchanged (backwards-compat assertion via re-running prior contract tests against the new dist).
-**Plans**: TBD
+**Plans:** 4 plans
+- [x] 16-01-PLAN.md (Wave 0) — RELEASE-01/02 docs: consolidated README "Hooks (v0.7.0)" section plus CHANGELOG v0.7.0 additive-only entry
+- [x] 16-02-PLAN.md (Wave 1) — RELEASE-03 build prep: bump package metadata to 0.7.0, rebuild dist, verify runtime/type export surfaces
+- [x] 16-03-PLAN.md (Wave 2) — RELEASE-03 smoke install: npm pack local tarball, fresh-consumer TypeScript/runtime smoke test for v0.7.0 hooks and v0.6.1 MPC compatibility
+- [ ] 16-04-PLAN.md (Wave 3) — RELEASE-04 publish/tag/close: npm publish, registry smoke install, git tag push, planning state closure (manual credentials checkpoint)
 
 ## Progress
 
@@ -183,5 +187,5 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 12. Multi-RP_ID Verification | v0.7.0 | 4/4 | Complete    | 2026-04-29 |
 | 13. Registration Analytics Hook | v0.7.0 | 5/5 | Complete   | 2026-04-30 |
 | 14. Second-Factor Enrolment Hook | v0.7.0 | 4/4 | Complete    | 2026-04-30 |
-| 15. Lazy-Backfill Hook | v0.7.0 | 0/4 | Planned | - |
-| 16. Release Prep | v0.7.0 | 0/TBD | Not started | - |
+| 15. Lazy-Backfill Hook | v0.7.0 | 4/4 | Complete | 2026-04-30 |
+| 16. Release Prep | v0.7.0 | 3/4 | Waiting on publish checkpoint | - |

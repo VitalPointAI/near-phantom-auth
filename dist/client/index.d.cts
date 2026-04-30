@@ -1,7 +1,8 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
-import { R as RegistrationStartResponse, a as RegistrationResponseJSON, b as RegistrationFinishResponse, A as AuthenticationStartResponse, c as AuthenticationResponseJSON, d as AuthenticationFinishResponse, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON } from '../index-DExFbKyH.cjs';
+import { R as RegistrationStartResponse, a as RegistrationResponseJSON, b as RegistrationFinishResponse, A as AuthenticationStartResponse, c as AuthenticationResponseJSON, d as AuthenticationFinishResponse, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON } from '../index-C-jQo7Jq.cjs';
 import 'pino';
+import 'express';
 
 interface AnonAuthState {
     /** Whether initial session check is in progress */
@@ -28,6 +29,12 @@ interface AnonAuthState {
     error: string | null;
     /** Whether the last registered credential appears cloud-synced (privacy warning) */
     credentialCloudSynced: boolean | null;
+    /** Whether the most recent passkey was backed up (BS bit) — re-read on every login,
+     *  may FLIP 0→1 over the credential's lifetime. null until register() or login() resolves. */
+    passkeyBackedUp: boolean | null;
+    /** Whether the most recent passkey is backup-eligible (BE bit) — set ONCE at registration,
+     *  immutable for the credential's lifetime. null until register() or login() resolves. */
+    passkeyBackupEligible: boolean | null;
     /** Available OAuth providers */
     oauthProviders: Array<{
         name: string;

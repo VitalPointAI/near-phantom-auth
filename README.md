@@ -314,6 +314,191 @@ second-factor enrolment ceremony you specified in `body`.
 - Type definitions: `src/types/index.ts` (search for `AfterAuthSuccessCtx`)
 - Re-export surface: `import type { AfterAuthSuccessCtx, AfterAuthSuccessResult, AfterAuthSuccessProvider } from '@vitalpoint/near-phantom-auth/server';`
 
+## Lazy-Backfill Hook (v0.7.0)
+
+`near-phantom-auth@0.7.0` exposes `hooks.backfillKeyBundle` — a pass-through
+hook that fires inside `POST /login/finish` when the authenticator returned a
+fresh PRF sealing key (`sealingKeyHex`). The hook lets consumers run their own
+key-bundle migration ceremony for pre-v0.6.0 NULL-bundle accounts without the
+library taking any opinion on the consumer's schema, transaction boundaries, or
+recovery topology.
+
+The contract is deliberately narrow: the library hands the consumer the
+minimal context (`userId`, `codename`, `nearAccountId`, `sealingKeyHex`, `req`),
+invokes the hook, echoes the result on the response, and otherwise steps aside.
+Backfill failure NEVER blocks login. A hook throw is caught, logged at WARN
+with a redacted payload, and the response continues with
+`backfill: { backfilled: false, reason: 'skipped' }`.
+
+### What the library does
+
+The library invokes the hook at exactly one fire point:
+
+- `POST /login/finish` — after passkey verify + `db.getUserById`, after any
+  Phase 14 `hooks.afterAuthSuccess` that returned `continue: true`, BEFORE
+  `sessionManager.createSession`. It fires only when `sealingKeyHex` was
+  supplied in the request body. No PRF means no fresh sealing key, so the hook
+  is silently skipped and no `backfill` field appears on the response.
+
+Sequential ordering when both Phase 14 and Phase 15 hooks are configured:
+
+1. `hooks.afterAuthSuccess` runs first.
+2. If it returns `{ continue: false, ... }`, the response short-circuits and
+   the backfill hook is not invoked.
+3. If it returns `{ continue: true }` (or is absent), and `sealingKeyHex` is
+   present, and `hooks.backfillKeyBundle` exists, the backfill hook fires.
+4. The result is echoed on the login response under an additive `backfill` key,
+   alongside the existing `success`, `codename`, and `passkey?` fields.
+
+The hook receives:
+
+```typescript
+import type { Request } from 'express';
+
+export interface BackfillKeyBundleCtx {
+  userId: string;
+  codename: string;
+  nearAccountId: string;
+  sealingKeyHex: string;
+  req: Request;
+}
+```
+
+The hook returns:
+
+```typescript
+export type BackfillReason =
+  | 'already-current'
+  | 'no-legacy-data'
+  | 'completed'
+  | 'skipped';
+
+export interface BackfillKeyBundleResult {
+  backfilled: boolean;
+  reason?: BackfillReason;
+}
+```
+
+Example login response when the hook runs:
+
+```json
+{
+  "success": true,
+  "codename": "ALPHA-BRAVO-7",
+  "passkey": { "backedUp": false, "backupEligible": false },
+  "backfill": { "backfilled": true, "reason": "completed" }
+}
+```
+
+### What the consumer must do
+
+Implement the migration in your own application code:
+
+```typescript
+hooks: {
+  backfillKeyBundle: async (ctx) => {
+    const legacy = await legacyStore.getNullBundleRow(ctx.userId);
+    if (!legacy) return { backfilled: false, reason: 'no-legacy-data' };
+
+    const bundle = await deriveKeyBundleFromSealingKey(ctx.sealingKeyHex);
+
+    await appDb.transaction(async (tx) => {
+      await tx.keyBundles.upsert({
+        userId: ctx.userId,
+        encryptedBundle: bundle.encryptedBundle,
+        wrappedDek: bundle.wrappedDek,
+      });
+      await tx.legacyBundles.markMigrated(ctx.userId);
+    });
+
+    return { backfilled: true, reason: 'completed' };
+  },
+}
+```
+
+`ctx.req` is the bare Express `Request`. The library does not sanitize it.
+If your hook reads cookies, headers, or extra body fields from `req`, that is
+your responsibility.
+
+### Consumer-owns-schema contract
+
+The library does not persist key bundles. It does not add schema, run schema
+migrations, or choose how your application stores encrypted material.
+
+The library also does not run a transaction around the hook. If your migration
+touches multiple tables, you must provide your own transaction discipline.
+That is the point of the pass-through design: the library provides the auth
+lifecycle fire point, but the consumer owns the data model.
+
+BACKFILL-03 is load-bearing here: if your hook throws, the library catches the
+error, logs a redacted WARN entry, and still completes login. The fallback
+response is:
+
+```json
+{
+  "backfill": { "backfilled": false, "reason": "skipped" }
+}
+```
+
+### Dual-recovery + IPFS-orphan footnote
+
+The library does not migrate existing IPFS recovery blobs. Those blobs remain
+consumer-owned. If your backfill replaces the recovery method, an older IPFS
+recovery blob may still exist but no longer be referenced by your current
+recovery path.
+
+That creates an explicit dual-recovery state:
+
+- your new key-bundle recovery path may be current
+- the old IPFS recovery blob may still exist
+- the library will not reconcile or delete it for you
+
+If you want old blobs cleaned up, documented, or kept as a temporary fallback,
+handle that in your own migration logic.
+
+### Known limitation
+
+The Phase 15 hook is awaited inline and currently has no library-side timeout.
+A hook that hangs will delay login. Consumer hooks must resolve in finite time.
+Timeout policy is deferred to a later release.
+
+### References
+
+- REQUIREMENTS: `BACKFILL-01..04` in `.planning/REQUIREMENTS.md`
+- Type definitions: `src/types/index.ts` (search for `BackfillKeyBundleCtx`)
+- Re-export surface: `import type { BackfillKeyBundleCtx, BackfillKeyBundleResult, BackfillReason } from '@vitalpoint/near-phantom-auth/server';`
+
+## Hooks (v0.7.0)
+
+v0.7.0 adds consumer extension points without removing or renaming the v0.6.1
+API surface. The release is additive: existing passkey, recovery, OAuth, PRF,
+and `MPCAccountManager` consumers continue to compile while new consumers can
+opt into hooks and cross-domain passkey configuration.
+
+| Surface | Purpose | Key contract |
+|---------|---------|--------------|
+| `hooks.afterAuthSuccess` | Inline second-factor gating after auth succeeds and before session creation. | Handles passkey register, passkey login, and OAuth callback success. Returning `{ continue: false, status, body }` short-circuits and echoes `secondFactor`. See [Second-Factor Enrolment Hook (v0.7.0)](#second-factor-enrolment-hook-v070). |
+| `hooks.backfillKeyBundle` | Pass-through lazy key-bundle migration for pre-v0.6.0 NULL-bundle accounts. | Fires only on `/login/finish` when `sealingKeyHex` exists. The library follows a consumer-owned schema contract: it does not persist bundles, wrap a transaction, or migrate IPFS blobs. See [Lazy-Backfill Hook (v0.7.0)](#lazy-backfill-hook-v070). |
+| `hooks.onAuthEvent` | Privacy-preserving lifecycle analytics. | Event shapes enforce the anonymity invariant: no `userId`, `codename`, `nearAccountId`, email, raw IP, or raw user-agent fields. Default is fire-and-forget; set `awaitAnalytics: true` when the event must complete before the response. |
+| `rp.relatedOrigins` | Cross-domain passkeys via WebAuthn Related Origin Requests. | Use paired tuples (`{ origin, rpId }`) with a maximum of 5 related origins. The library validates scheme, wildcard absence, suffix-domain pairing, and cap at startup. See [Cross-Domain Passkeys (v0.7.0)](#cross-domain-passkeys-v070). |
+
+Important release notes:
+
+- **MPC orphan trade-off:** `hooks.afterAuthSuccess` runs after MPC funding on
+  registration and OAuth new-user paths. Hook failures or soft short-circuits
+  can leave funded on-chain accounts or committed OAuth/IPFS state; use
+  idempotent hooks and prefer returned `{ continue: false }` for soft failures.
+- **consumer-owned schema:** `hooks.backfillKeyBundle` gives your code
+  `sealingKeyHex` and user identifiers, then steps aside. Your application owns
+  the schema, transaction, migration, and any cleanup for old IPFS recovery
+  blobs.
+- **anonymity invariant:** library analytics events and hook error logs never
+  include user identifiers or PRF sealing material. Consumer hooks receive
+  sensitive context intentionally and are responsible for their own handling.
+- **5 related origins:** browsers cap related-origin passkey support; the
+  library enforces a maximum of 5 related origins and does not auto-host
+  `/.well-known/webauthn`.
+
 ## Installation
 
 ```bash

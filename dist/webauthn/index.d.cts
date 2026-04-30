@@ -1,5 +1,6 @@
-import { f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON, c as AuthenticationResponseJSON, a as RegistrationResponseJSON } from '../index-DExFbKyH.cjs';
+import { f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, e as PublicKeyCredentialCreationOptionsJSON, c as AuthenticationResponseJSON, a as RegistrationResponseJSON } from '../index-C-jQo7Jq.cjs';
 import 'pino';
+import 'express';
 
 /**
  * Standalone WebAuthn Verification Utilities
@@ -67,10 +68,16 @@ interface VerifyRegistrationInput {
     response: RegistrationResponseJSON;
     /** The challenge that was sent to client */
     expectedChallenge: string;
-    /** Expected origin (e.g., 'https://example.com') */
-    expectedOrigin: string;
-    /** Expected RP ID (e.g., 'example.com') */
-    expectedRPID: string;
+    /** Expected origin (e.g., 'https://example.com'). v0.7.0 (RPID-04): pass an
+     *  array of strings to accept assertions from related domains. The library
+     *  validates origin membership via Array.includes; pair-with-rpID enforcement
+     *  is the caller's responsibility (see README "Cross-Domain Passkeys"). */
+    expectedOrigin: string | string[];
+    /** Expected RP ID (e.g., 'example.com'). v0.7.0 (RPID-04): pass an array for
+     *  cross-domain passkey support; pair the array elements 1:1 with
+     *  `expectedOrigin` by index — `@simplewebauthn/server` does NOT cross-check
+     *  pairing. */
+    expectedRPID: string | string[];
 }
 interface VerifyRegistrationResult {
     /** Whether verification succeeded */
@@ -83,10 +90,17 @@ interface VerifyRegistrationResult {
         publicKey: Uint8Array;
         /** Counter - store and update for replay protection */
         counter: number;
-        /** Device type */
+        /** BE bit — set ONCE at credential creation. `'multiDevice'` if the
+         *  authenticator supports backup; `'singleDevice'` if not. Immutable. */
         deviceType: 'singleDevice' | 'multiDevice';
-        /** Whether backed up to cloud */
+        /** BS bit — current backup state. May FLIP from 0→1 over the credential's
+         *  lifetime. Re-read on every authentication assertion. */
         backedUp: boolean;
+        /** Convenience derived from BE bit: `deviceType === 'multiDevice'`.
+         *  Capability flag — does NOT mean the credential is currently backed up.
+         *  See `backedUp` for current state. Invariant: `backupEligible === false`
+         *  implies `backedUp === false`. */
+        backupEligible: boolean;
         /** Transport methods */
         transports?: AuthenticatorTransport[];
     };
@@ -125,10 +139,12 @@ interface VerifyAuthenticationInput {
     response: AuthenticationResponseJSON;
     /** The challenge that was sent to client */
     expectedChallenge: string;
-    /** Expected origin (e.g., 'https://example.com') */
-    expectedOrigin: string;
-    /** Expected RP ID (e.g., 'example.com') */
-    expectedRPID: string;
+    /** Expected origin (e.g., 'https://example.com'). v0.7.0 (RPID-04): see
+     *  VerifyRegistrationInput.expectedOrigin for the array form contract. */
+    expectedOrigin: string | string[];
+    /** Expected RP ID (e.g., 'example.com'). v0.7.0 (RPID-04): see
+     *  VerifyRegistrationInput.expectedRPID for the array form contract. */
+    expectedRPID: string | string[];
     /** The stored credential for this user */
     credential: StoredCredential;
 }
@@ -152,6 +168,21 @@ declare function createRegistrationOptions(input: CreateRegistrationOptionsInput
  *
  * Call this when the client sends back their credential.
  * If verified, store the credential data in your database.
+ *
+ * @remarks
+ * Backup eligibility / state (WebAuthn Level 2 §6.1.3):
+ * - `result.credential.deviceType` reflects the BE bit (Backup Eligibility).
+ *   Set ONCE at credential creation; immutable for the credential's lifetime.
+ *   `'multiDevice'` means the authenticator class supports backup
+ *   (e.g., iCloud Keychain, Google Password Manager).
+ * - `result.credential.backedUp` reflects the BS bit (Backup State).
+ *   Current backup state; MAY FLIP 0→1 over the credential's lifetime as
+ *   the authenticator backs up the key. Re-read on every authentication.
+ * - `result.credential.backupEligible` is a convenience derived from BE
+ *   (`deviceType === 'multiDevice'`). Independent of `backedUp`: a multi-device
+ *   credential MAY not yet be backed up (`backupEligible: true, backedUp: false`).
+ * - Invariant: `backupEligible === false` implies `backedUp === false`
+ *   (a single-device credential cannot be backed up).
  */
 declare function verifyRegistration(input: VerifyRegistrationInput): Promise<VerifyRegistrationResult>;
 /**

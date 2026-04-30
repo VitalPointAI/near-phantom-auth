@@ -289,7 +289,11 @@ function AnonAuthProvider({ apiUrl, passkey, children }) {
     platformAuthAvailable: false,
     error: null,
     credentialCloudSynced: null,
-    oauthProviders: []
+    oauthProviders: [],
+    passkeyBackedUp: null,
+    // NEW (BACKUP-04)
+    passkeyBackupEligible: null
+    // NEW (BACKUP-04)
   });
   react.useEffect(() => {
     const checkSupport = async () => {
@@ -362,7 +366,9 @@ function AnonAuthProvider({ apiUrl, passkey, children }) {
           username: result.username || username || null,
           nearAccountId: result.nearAccountId,
           authMethod: "passkey",
-          credentialCloudSynced: cloudSynced
+          credentialCloudSynced: cloudSynced,
+          passkeyBackedUp: result.passkey?.backedUp ?? null,
+          passkeyBackupEligible: result.passkey?.backupEligible ?? null
         }));
       } else {
         throw new Error("Registration failed");
@@ -393,7 +399,9 @@ function AnonAuthProvider({ apiUrl, passkey, children }) {
           isAuthenticated: true,
           codename: session.codename || result.codename,
           nearAccountId: session.nearAccountId || null,
-          expiresAt: session.expiresAt ? new Date(session.expiresAt) : null
+          expiresAt: session.expiresAt ? new Date(session.expiresAt) : null,
+          passkeyBackedUp: result.passkey?.backedUp ?? null,
+          passkeyBackupEligible: result.passkey?.backupEligible ?? null
         }));
       } else {
         throw new Error("Authentication failed");

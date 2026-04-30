@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-04-30
+
+### Added
+- **BACKUP-01..05:** Register and login responses now expose additive
+  backup-eligibility passkey metadata (`passkey.backedUp` and
+  `passkey.backupEligible`), with React state helpers mirroring the values.
+- **RPID-01..05:** Multi-RP_ID / related-origin verification via
+  `rp.relatedOrigins: Array<{ origin, rpId }>` paired tuples, including startup
+  validation, array-form standalone WebAuthn verification inputs, README
+  guidance for `/.well-known/webauthn`, and the 5 related-origin cap.
+- **ANALYTICS-01..06:** Privacy-preserving `hooks.onAuthEvent` lifecycle
+  analytics with type-level PII guards, static failure reasons, fire-and-forget
+  default behavior, and `awaitAnalytics` opt-in for synchronous delivery.
+- **HOOK-02..06:** `hooks.afterAuthSuccess` second-factor gating on passkey
+  register, passkey login, and OAuth callback success, including structured
+  `secondFactor` response echoes on short-circuit.
+- **BACKFILL-01..04:** `hooks.backfillKeyBundle` lazy-backfill hook for
+  pre-v0.6.0 NULL-bundle accounts. The hook fires on `/login/finish` only when
+  `sealingKeyHex` is supplied, echoes `backfill`, and contains hook failures so
+  login is never blocked.
+
+### Compatibility
+- Additive only - no breaking changes from v0.6.1.
+- `MPCAccountManager`, `MPCAccountManagerConfig`, `CreateAccountResult`,
+  `createAccount`, and `verifyRecoveryWallet` remain frozen for the v0.6.1
+  standalone consumer contract.
+- Existing consumers that omit `hooks`, omit `awaitAnalytics`, and omit
+  `rp.relatedOrigins` keep v0.6.1 behavior.
+
+### Notes
+- **Zero new npm dependencies.** v0.7.0 reuses existing Express, pino, Zod,
+  WebAuthn, and NEAR dependencies.
+- **Anonymity invariant maintained.** Analytics events and library error logs
+  do not carry `userId`, `codename`, `nearAccountId`, email, raw IP,
+  raw user-agent, or PRF sealing material.
+- **Consumer-owned schema for lazy backfill.** The library does not persist key
+  bundles, wrap a transaction around backfill, or migrate existing IPFS recovery
+  blobs.
+
 ## [0.6.1] — 2026-04-29
 
 ### Fixed

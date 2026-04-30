@@ -1,2 +1,3 @@
-export { i as AnonAuthConfig, j as AnonUser, n as CodenameConfig, D as DatabaseAdapter, O as OAuthConfig, k as OAuthProvider, l as OAuthUser, g as Passkey, o as RecoveryConfig, p as RecoveryData, q as RecoveryType, S as Session, U as User, m as UserType } from './index-DExFbKyH.cjs';
+export { k as AnonAuthConfig, p as AnonUser, v as CodenameConfig, D as DatabaseAdapter, O as OAuthConfig, s as OAuthProvider, t as OAuthUser, g as Passkey, w as RecoveryConfig, x as RecoveryData, y as RecoveryType, S as Session, U as User, u as UserType } from './index-C-jQo7Jq.cjs';
 import 'pino';
+import 'express';

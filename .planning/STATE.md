@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.7.0
 milestone_name: Consumer Hooks & Recovery Hardening
 status: executing
-stopped_at: Phase 13 verified — ANALYTICS-01..06 closed, 11/11 must-haves, suite green (397/4/0). Ready to plan Phase 14 or run /gsd-extract-learnings 13.
-last_updated: "2026-04-30T13:44:41.635Z"
-last_activity: 2026-04-30 -- Phase 15 planning complete
+stopped_at: Phase 16 release prep executed through local smoke install and npm publish dry-run. Waiting on manual npm publish, registry smoke, and git tag push.
+last_updated: "2026-04-30T16:30:00.000Z"
+last_activity: 2026-04-30 -- Phase 16 paused at publish checkpoint
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 23
-  completed_plans: 19
-  percent: 83
+  completed_phases: 5
+  total_plans: 27
+  completed_plans: 26
+  percent: 96
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 14 — second-factor-enrolment-hook
+**Current focus:** Phase 16 — release-prep
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-04-30 -- Phase 15 planning complete
+Phase: 16 (release-prep) — CHECKPOINT
+Plan: 4 of 4
+Status: Waiting on manual npm publish, registry smoke, and git tag push
+Last activity: 2026-04-30 -- Phase 16 paused at publish checkpoint
 
 ## Performance Metrics
 
@@ -48,8 +48,8 @@ Last activity: 2026-04-30 -- Phase 15 planning complete
 | 12 | 4 | - | - |
 | 13 | TBD | - | - |
 | 14 | 4 | - | - |
-| 15 | TBD | - | - |
-| 16 | TBD | - | - |
+| 15 | 4 | - | - |
+| 16 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -66,6 +66,14 @@ Last activity: 2026-04-30 -- Phase 15 planning complete
 | Phase 13 P03 | 11m | 3 tasks | 2 files |
 | Phase 13 P04 | 5min | 2 tasks | 2 files |
 | Phase 13 P05 | 6m31s | - tasks | - files |
+| Phase 15 P01 | 5min | 2 tasks | 4 files |
+| Phase 15 P02 | 8min | 1 tasks | 1 files |
+| Phase 15 P03 | 16min | 2 tasks | 2 files |
+| Phase 15 P04 | 4min | 1 tasks | 1 files |
+| Phase 16 planning | - | 4 plans | docs/release |
+| Phase 16 P01 | - | 2 tasks | 2 files |
+| Phase 16 P02 | - | 3 tasks | package/dist |
+| Phase 16 P03 | - | 2 tasks | smoke |
 
 ## Accumulated Context
 
@@ -83,6 +91,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - [v0.7.0]: Phase 13 (Analytics) promoted earlier than Architecture researcher's suggested order — R2 type-level PII whitelist is highest-priority defense; landing it before F2/F3 means subsequent features are tested against it from day one.
 - [v0.7.0]: R3 origin-spoofing defense (paired-tuple `relatedOrigins: Array<{ origin, rpId }>` type + startup validation) is load-bearing for Phase 12.
 - [v0.7.0]: BACKFILL-03 contract: backfill failure must NEVER block login — hook errors caught, WARN-logged, response continues with `backfill: { backfilled: false, reason: 'skipped' }`.
+- [Phase 15]: `/login/finish` hook ordering is locked: `afterAuthSuccess` short-circuit first, then `backfillKeyBundle` only on the continue path and only when `sealingKeyHex` exists.
+- [Phase 15]: Backfill redaction uses the Phase 13 `redactErrorMessage()` helper verbatim — WARN logs never include `sealingKeyHex`, `userId`, `codename`, or `nearAccountId`.
+- [Phase 15]: README now carries the canonical consumer-owned-schema contract and dual-recovery/IPFS-orphan caveat for `hooks.backfillKeyBundle`; Phase 16 RELEASE-01 can lift that section verbatim.
 
 **Recent v0.6.1 decisions affecting current work (carried forward):**
 
@@ -119,7 +130,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Pending Todos
 
-None yet — Phase 11 planning is the next step.
+None.
 
 ## Deferred Items
 

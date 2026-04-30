@@ -1,6 +1,6 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, D as DatabaseAdapter, O as OAuthConfig, h as RateLimitConfig, C as CsrfConfig, i as AnonAuthConfig } from '../index-DExFbKyH.cjs';
-export { j as AnonUser, k as OAuthProvider, l as OAuthUser, U as User, m as UserType } from '../index-DExFbKyH.cjs';
+import { S as Session, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, f as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, g as Passkey, h as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, i as RateLimitConfig, C as CsrfConfig, j as AnonAuthHooks, k as AnonAuthConfig } from '../index-C-jQo7Jq.cjs';
+export { l as AfterAuthSuccessCtx, m as AfterAuthSuccessProvider, n as AfterAuthSuccessResult, o as AnalyticsEvent, p as AnonUser, B as BackfillKeyBundleCtx, q as BackfillKeyBundleResult, r as BackfillReason, s as OAuthProvider, t as OAuthUser, U as User, u as UserType } from '../index-C-jQo7Jq.cjs';
 import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.cjs';
 
@@ -52,6 +52,13 @@ interface PasskeyConfig {
     rpId: string;
     /** Origin for WebAuthn (e.g., 'https://example.com') */
     origin: string;
+    /** Phase 12 RPID-01 — already-validated paired tuples threaded from
+     *  createAnonAuth. REQUIRED (factory passes [] when consumer omits
+     *  rp.relatedOrigins). The validator runs upstream (src/server/index.ts
+     *  startup); this field is never re-validated here. Spread by tuple
+     *  ORDER into expectedOrigin / expectedRPID at the verify call sites
+     *  — no intermediate `.filter()` / `.sort()` permitted (Pitfall 1). */
+    relatedOrigins: readonly RelatedOrigin[];
     /** Challenge timeout in ms (default: 60000) */
     challengeTimeoutMs?: number;
     /** Optional pino logger instance. If omitted, logging is disabled (no output). */
@@ -82,6 +89,12 @@ interface PasskeyManager {
         verified: boolean;
         userId?: string;
         passkey?: Passkey;
+        /** Fresh BE/BS values re-read from the assertion (not the stored DB row).
+         *  Present when verification succeeded; consumed by router for response surface. */
+        passkeyData?: {
+            backedUp: boolean;
+            deviceType: 'singleDevice' | 'multiDevice';
+        };
     }>;
 }
 
@@ -449,6 +462,14 @@ interface OAuthRouterConfig {
     emailService?: EmailService;
     /** Optional pre-created OAuthManager instance. If omitted, one is created internally. */
     oauthManager?: OAuthManager;
+    /** Phase 11 scaffolding — accepted and stored; call sites wired in Phases 13–15. */
+    hooks?: AnonAuthHooks;
+    /** Phase 13 ANALYTICS-01. Primary RP ID, used in every emitted event's
+     *  `rpId` field. Captured once at router construction. */
+    rpId?: string;
+    /** Phase 13 ANALYTICS-04. When true, lifecycle emit calls await the
+     *  consumer's `onAuthEvent` hook before responding. Default false. */
+    awaitAnalytics?: boolean;
 }
 declare function createOAuthRouter(config: OAuthRouterConfig): Router;
 
@@ -516,4 +537,4 @@ interface AnonAuthInstance {
  */
 declare function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance;
 
-export { AnonAuthConfig, type AnonAuthInstance, type CleanupScheduler, type CreateAccountResult, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCAccountManagerConfig, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };
+export { AnonAuthConfig, AnonAuthHooks, type AnonAuthInstance, type CleanupScheduler, type CreateAccountResult, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCAccountManagerConfig, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, RelatedOrigin, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };

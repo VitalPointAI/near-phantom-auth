@@ -17,7 +17,7 @@
  * authenticateWithPasskey / api bodies), and 03 (useAnonAuth source-pattern guards).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
@@ -93,25 +93,69 @@ export function makeMockCredentialNoPrf(credKey: Buffer): MockPublicKeyCredentia
 // Global DOM stubs — vitest runs in Node; navigator.credentials is absent
 // ---------------------------------------------------------------------------
 
+const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+const originalPublicKeyCredentialDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'PublicKeyCredential');
+
 beforeEach(() => {
-  (globalThis as unknown as { navigator: Navigator }).navigator = {
+  const mockNavigator = {
     credentials: {
       create: vi.fn(),
       get: vi.fn(),
     },
   } as unknown as Navigator;
+
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: mockNavigator,
+  });
+
   (globalThis as unknown as { atob: typeof atob }).atob = (s: string) =>
     Buffer.from(s, 'base64').toString('binary');
   (globalThis as unknown as { btoa: typeof btoa }).btoa = (s: string) =>
     Buffer.from(s, 'binary').toString('base64');
-  (globalThis as unknown as { PublicKeyCredential: unknown }).PublicKeyCredential = class {
+
+  const MockPublicKeyCredential = class {
     static isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
   };
-  (globalThis as unknown as { window: unknown }).window = {
-    PublicKeyCredential: (globalThis as unknown as { PublicKeyCredential: unknown }).PublicKeyCredential,
-    navigator: (globalThis as unknown as { navigator: Navigator }).navigator,
-  };
+
+  Object.defineProperty(globalThis, 'PublicKeyCredential', {
+    configurable: true,
+    writable: true,
+    value: MockPublicKeyCredential,
+  });
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    writable: true,
+    value: {
+      PublicKeyCredential: MockPublicKeyCredential,
+      navigator: mockNavigator,
+    },
+  });
+
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  if (originalNavigatorDescriptor) {
+    Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor);
+  } else {
+    delete (globalThis as Partial<typeof globalThis>).navigator;
+  }
+
+  if (originalWindowDescriptor) {
+    Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
+  } else {
+    delete (globalThis as Partial<typeof globalThis>).window;
+  }
+
+  if (originalPublicKeyCredentialDescriptor) {
+    Object.defineProperty(globalThis, 'PublicKeyCredential', originalPublicKeyCredentialDescriptor);
+  } else {
+    delete (globalThis as Partial<typeof globalThis>).PublicKeyCredential;
+  }
 });
 
 // ---------------------------------------------------------------------------

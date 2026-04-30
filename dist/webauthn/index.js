@@ -2,6 +2,11 @@ import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthen
 import pino from 'pino';
 
 // src/server/webauthn.ts
+
+// src/server/backup.ts
+function deriveBackupEligibility(deviceType) {
+  return deviceType === "multiDevice";
+}
 var log = pino({ level: "silent" }).child({ module: "webauthn" });
 async function createRegistrationOptions(input) {
   const {
@@ -61,6 +66,7 @@ async function verifyRegistration(input) {
         counter: registrationInfo.credential.counter,
         deviceType: registrationInfo.credentialDeviceType,
         backedUp: registrationInfo.credentialBackedUp,
+        backupEligible: deriveBackupEligibility(registrationInfo.credentialDeviceType),
         transports: response.response.transports
       }
     };

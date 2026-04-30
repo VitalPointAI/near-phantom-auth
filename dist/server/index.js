@@ -553,6 +553,13 @@ function createPostgresAdapter(config) {
         [counter, credentialId]
       );
     },
+    async updatePasskeyBackedUp(credentialId, backedUp) {
+      const p = await getPool();
+      await p.query(
+        "UPDATE anon_passkeys SET backed_up = $1 WHERE credential_id = $2",
+        [backedUp, credentialId]
+      );
+    },
     async deletePasskey(credentialId) {
       const p = await getPool();
       await p.query("DELETE FROM anon_passkeys WHERE credential_id = $1", [credentialId]);
@@ -922,8 +929,8 @@ function createPasskeyManager(db, config) {
         verification = await verifyRegistrationResponse({
           response,
           expectedChallenge: challenge.challenge,
-          expectedOrigin: config.origin,
-          expectedRPID: config.rpId
+          expectedOrigin: config.relatedOrigins.length === 0 ? config.origin : [config.origin, ...config.relatedOrigins.map((r) => r.origin)],
+          expectedRPID: config.relatedOrigins.length === 0 ? config.rpId : [config.rpId, ...config.relatedOrigins.map((r) => r.rpId)]
         });
       } catch (error) {
         log2.error({ err: error }, "Registration verification failed");
@@ -1000,8 +1007,8 @@ function createPasskeyManager(db, config) {
         verification = await verifyAuthenticationResponse({
           response,
           expectedChallenge: challenge.challenge,
-          expectedOrigin: config.origin,
-          expectedRPID: config.rpId,
+          expectedOrigin: config.relatedOrigins.length === 0 ? config.origin : [config.origin, ...config.relatedOrigins.map((r) => r.origin)],
+          expectedRPID: config.relatedOrigins.length === 0 ? config.rpId : [config.rpId, ...config.relatedOrigins.map((r) => r.rpId)],
           credential: {
             id: passkey.credentialId,
             publicKey: passkey.publicKey,
@@ -1018,18 +1025,82 @@ function createPasskeyManager(db, config) {
         await db.deleteChallenge(challengeId);
         return { verified: false };
       }
+      const freshBackedUp = verification.authenticationInfo.credentialBackedUp;
+      const freshDeviceType = verification.authenticationInfo.credentialDeviceType;
       await db.updatePasskeyCounter(
         passkey.credentialId,
         verification.authenticationInfo.newCounter
       );
+      if (freshBackedUp !== passkey.backedUp && db.updatePasskeyBackedUp) {
+        await db.updatePasskeyBackedUp(passkey.credentialId, freshBackedUp);
+      }
       await db.deleteChallenge(challengeId);
       return {
         verified: true,
         userId: passkey.userId,
-        passkey
+        passkey,
+        passkeyData: {
+          backedUp: freshBackedUp,
+          deviceType: freshDeviceType
+        }
       };
     }
   };
+}
+
+// src/server/relatedOrigins.ts
+var MAX_RELATED_ORIGINS = 5;
+var HTTPS_RE = /^https:\/\/[^*\s/?#]+(:[0-9]+)?$/;
+var LOCALHOST_HTTP_RE = /^http:\/\/localhost(:[0-9]+)?$/;
+var RPID_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+function validateRelatedOrigins(entries, primaryRpId, primaryOrigin) {
+  if (!entries || entries.length === 0) return [];
+  if (entries.length > MAX_RELATED_ORIGINS) {
+    throw new Error(
+      `rp.relatedOrigins: max ${MAX_RELATED_ORIGINS} entries allowed (got ${entries.length}). Browser Related Origin Requests support a minimum of 5 unique labels; more entries are silently ignored by Chrome/Safari.`
+    );
+  }
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!e || typeof e !== "object" || typeof e.origin !== "string" || typeof e.rpId !== "string") {
+      throw new Error(`rp.relatedOrigins[${i}]: must be { origin: string; rpId: string }`);
+    }
+    if (e.origin.includes("*") || e.rpId.includes("*")) {
+      throw new Error(
+        `rp.relatedOrigins[${i}]: wildcards are not permitted (got origin="${e.origin}" rpId="${e.rpId}")`
+      );
+    }
+    const isHttps = HTTPS_RE.test(e.origin);
+    const isLocalhostHttp = LOCALHOST_HTTP_RE.test(e.origin) && e.rpId === "localhost";
+    if (!isHttps && !isLocalhostHttp) {
+      throw new Error(
+        `rp.relatedOrigins[${i}]: origin must be https:// (got "${e.origin}"). http:// is only permitted when rpId === "localhost".`
+      );
+    }
+    if (!RPID_RE.test(e.rpId)) {
+      throw new Error(`rp.relatedOrigins[${i}]: rpId "${e.rpId}" is not a valid host`);
+    }
+    let host;
+    try {
+      host = new URL(e.origin).hostname.toLowerCase();
+    } catch {
+      throw new Error(`rp.relatedOrigins[${i}]: origin "${e.origin}" is not a valid URL`);
+    }
+    const rpIdLower = e.rpId.toLowerCase();
+    const isExact = host === rpIdLower;
+    const isSubdomain = host.endsWith("." + rpIdLower);
+    if (!isExact && !isSubdomain) {
+      throw new Error(
+        `rp.relatedOrigins[${i}]: origin host "${host}" is not a suffix-domain of rpId "${e.rpId}". WebAuthn requires the assertion's effective domain be equal to or a subdomain of rpId.`
+      );
+    }
+    if (e.origin === primaryOrigin && e.rpId === primaryRpId) {
+      throw new Error(
+        `rp.relatedOrigins[${i}]: duplicates the primary rp { origin: "${primaryOrigin}", rpId: "${primaryRpId}" }. The primary rp is implicit; do not list it in relatedOrigins.`
+      );
+    }
+  }
+  return [...entries];
 }
 var _log = pino3({ level: "silent" }).child({ module: "wallet-recovery" });
 function generateWalletChallenge(action, timestamp) {
@@ -2029,6 +2100,48 @@ Store this securely. You will need it to recover your account if you lose your d
     }
   };
 }
+Object.freeze(/* @__PURE__ */ new Set([
+  "type",
+  "rpId",
+  "timestamp",
+  "provider",
+  "backupEligible",
+  "reason",
+  "codenameProvided"
+]));
+function redactErrorMessage(err) {
+  if (err instanceof Error) {
+    const lines = err.stack?.split("\n") ?? [];
+    const frames = lines.filter((line) => /^\s+at\s/.test(line));
+    const stackHead = frames.length > 0 ? frames.slice(0, 2).join(" | ") : void 0;
+    return { name: err.name, stackHead };
+  }
+  return { name: typeof err };
+}
+function wrapAnalytics(hook, opts = {}) {
+  const log2 = (opts.logger ?? pino3({ level: "silent" })).child({ module: "analytics" });
+  const shouldAwait = opts.await === true;
+  if (!hook) {
+    return () => {
+    };
+  }
+  return (event) => {
+    let ret;
+    try {
+      ret = hook(event);
+    } catch (err) {
+      log2.warn({ err: redactErrorMessage(err) }, "analytics hook threw");
+      return shouldAwait ? Promise.resolve() : void 0;
+    }
+    if (ret && typeof ret.then === "function") {
+      const safe = ret.catch((err) => {
+        log2.warn({ err: redactErrorMessage(err) }, "analytics hook rejected");
+      });
+      return shouldAwait ? safe : void 0;
+    }
+    return shouldAwait ? Promise.resolve() : void 0;
+  };
+}
 
 // src/server/validation/validateBody.ts
 function validateBody(schema, req, res) {
@@ -2144,6 +2257,17 @@ function createOAuthRouter(config) {
     ipfsRecovery,
     emailService
   } = config;
+  const rpId = config.rpId ?? "localhost";
+  const emit = wrapAnalytics(config.hooks?.onAuthEvent, {
+    logger: config.logger,
+    await: config.awaitAnalytics === true
+  });
+  async function runOAuthHook(hook, ctx) {
+    if (!hook) return void 0;
+    const result = await hook(ctx);
+    if (result.continue === true) return void 0;
+    return { status: result.status, body: result.body };
+  }
   const authRateConfig = config.rateLimiting?.auth ?? {};
   const authLimiter = rateLimit({
     windowMs: authRateConfig.windowMs ?? 15 * 60 * 1e3,
@@ -2254,10 +2378,22 @@ function createOAuthRouter(config) {
       const profile = await oauthManager.getProfile(provider, tokens.accessToken);
       let user = await db.getOAuthUserByProvider(provider, profile.providerId);
       if (user) {
+        const sf2 = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+          authMethod: `oauth-${provider}`,
+          userId: user.id,
+          nearAccountId: user.nearAccountId,
+          provider,
+          req
+        });
+        if (sf2) {
+          await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
+          return res.status(sf2.status).json({ ...sf2.body, secondFactor: sf2 });
+        }
         await sessionManager.createSession(user.id, res, {
           ipAddress: req.ip,
           userAgent: req.headers["user-agent"]
         });
+        await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
         return res.json({
           success: true,
           user: {
@@ -2283,10 +2419,22 @@ function createOAuthRouter(config) {
             connectedAt: /* @__PURE__ */ new Date()
           };
           await db.linkOAuthProvider(user.id, providerData2);
+          const sf2 = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+            authMethod: `oauth-${provider}`,
+            userId: user.id,
+            nearAccountId: user.nearAccountId,
+            provider,
+            req
+          });
+          if (sf2) {
+            await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
+            return res.status(sf2.status).json({ ...sf2.body, secondFactor: sf2 });
+          }
           await sessionManager.createSession(user.id, res, {
             ipAddress: req.ip,
             userAgent: req.headers["user-agent"]
           });
+          await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
           return res.json({
             success: true,
             user: {
@@ -2353,10 +2501,22 @@ function createOAuthRouter(config) {
           log2.error({ err: error }, "Failed to create recovery backup");
         }
       }
+      const sf = await runOAuthHook(config.hooks?.afterAuthSuccess, {
+        authMethod: `oauth-${provider}`,
+        userId: newUser.id,
+        nearAccountId: newUser.nearAccountId,
+        provider,
+        req
+      });
+      if (sf) {
+        await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
+        return res.status(sf.status).json({ ...sf.body, secondFactor: sf });
+      }
       await sessionManager.createSession(newUser.id, res, {
         ipAddress: req.ip,
         userAgent: req.headers["user-agent"]
       });
+      await emit({ type: "oauth.callback.success", rpId, timestamp: Date.now(), provider });
       return res.json({
         success: true,
         user: {
@@ -2567,6 +2727,11 @@ function isValidCodename(codename) {
   return natoPattern.test(codename) || animalPattern.test(codename);
 }
 
+// src/server/backup.ts
+function deriveBackupEligibility(deviceType) {
+  return deviceType === "multiDevice";
+}
+
 // src/server/router.ts
 function createRouter(config) {
   const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "router" });
@@ -2579,6 +2744,11 @@ function createRouter(config) {
     walletRecovery,
     ipfsRecovery
   } = config;
+  const rpId = config.rpId ?? "localhost";
+  const emit = wrapAnalytics(config.hooks?.onAuthEvent, {
+    logger: config.logger,
+    await: config.awaitAnalytics === true
+  });
   const authRateConfig = config.rateLimiting?.auth ?? {};
   const recoveryRateConfig = config.rateLimiting?.recovery ?? {};
   const authLimiter = rateLimit({
@@ -2627,6 +2797,7 @@ function createRouter(config) {
     try {
       const body = validateBody(registerStartBodySchema, req, res);
       if (!body) return;
+      await emit({ type: "register.start", rpId, timestamp: Date.now() });
       const tempUserId = crypto.randomUUID();
       const style = config.codename?.style || "nato-phonetic";
       let codename;
@@ -2664,6 +2835,7 @@ function createRouter(config) {
       if (!body) return;
       const { challengeId, response, tempUserId, codename } = body;
       if (!isValidCodename(codename)) {
+        await emit({ type: "register.finish.failure", rpId, timestamp: Date.now(), reason: "invalid-codename" });
         return res.status(400).json({ error: "Invalid codename format" });
       }
       const { verified, passkeyData } = await passkeyManager.finishRegistration(
@@ -2671,6 +2843,7 @@ function createRouter(config) {
         response
       );
       if (!verified || !passkeyData) {
+        await emit({ type: "register.finish.failure", rpId, timestamp: Date.now(), reason: "passkey-verification-failed" });
         return res.status(400).json({ error: "Passkey verification failed" });
       }
       const mpcAccount = await mpcManager.createAccount(tempUserId);
@@ -2690,20 +2863,51 @@ function createRouter(config) {
           backedUp: passkeyData.backedUp,
           transports: passkeyData.transports
         });
+        let secondFactor2;
+        if (config.hooks?.afterAuthSuccess) {
+          const result = await config.hooks.afterAuthSuccess({
+            authMethod: "passkey-register",
+            userId: user2.id,
+            codename: user2.codename,
+            nearAccountId: user2.nearAccountId,
+            req
+          });
+          if (result.continue === false) {
+            secondFactor2 = { status: result.status, body: result.body };
+            return { user: user2, session: void 0, secondFactor: secondFactor2 };
+          }
+        }
         const session = await sessionManager.createSession(user2.id, res, {
           ipAddress: req.ip,
           userAgent: req.headers["user-agent"]
         });
-        return { user: user2, session };
+        return { user: user2, session, secondFactor: void 0 };
       };
-      const { user } = db.transaction ? await db.transaction(doRegistration) : await doRegistration(db);
+      const { user, secondFactor } = db.transaction ? await db.transaction(doRegistration) : await doRegistration(db);
+      await emit({
+        type: "register.finish.success",
+        rpId,
+        timestamp: Date.now(),
+        backupEligible: deriveBackupEligibility(passkeyData.deviceType)
+      });
+      if (secondFactor) {
+        return res.status(secondFactor.status).json({
+          ...secondFactor.body,
+          secondFactor
+        });
+      }
       res.json({
         success: true,
         codename: user.codename,
-        nearAccountId: user.nearAccountId
+        nearAccountId: user.nearAccountId,
+        passkey: {
+          backedUp: passkeyData.backedUp,
+          backupEligible: deriveBackupEligibility(passkeyData.deviceType)
+        }
       });
     } catch (error) {
       log2.error({ err: error }, "Registration finish error");
+      await emit({ type: "register.finish.failure", rpId, timestamp: Date.now(), reason: "internal-error" });
       res.status(500).json({ error: "Registration failed" });
     }
   });
@@ -2712,6 +2916,12 @@ function createRouter(config) {
       const body = validateBody(loginStartBodySchema, req, res);
       if (!body) return;
       const { codename } = body;
+      await emit({
+        type: "login.start",
+        rpId,
+        timestamp: Date.now(),
+        codenameProvided: !!codename
+      });
       let userId;
       if (codename) {
         const user = await db.getUserByCodename(codename);
@@ -2731,17 +2941,62 @@ function createRouter(config) {
     try {
       const body = validateBody(loginFinishBodySchema, req, res);
       if (!body) return;
-      const { challengeId, response } = body;
-      const { verified, userId } = await passkeyManager.finishAuthentication(
+      const { challengeId, response, sealingKeyHex } = body;
+      const { verified, userId, passkeyData } = await passkeyManager.finishAuthentication(
         challengeId,
         response
       );
       if (!verified || !userId) {
+        await emit({ type: "login.finish.failure", rpId, timestamp: Date.now(), reason: "auth-failed" });
         return res.status(401).json({ error: "Authentication failed" });
       }
       const user = await db.getUserById(userId);
       if (!user) {
+        await emit({ type: "login.finish.failure", rpId, timestamp: Date.now(), reason: "user-not-found" });
         return res.status(404).json({ error: "User not found" });
+      }
+      let secondFactor;
+      if (config.hooks?.afterAuthSuccess) {
+        const result = await config.hooks.afterAuthSuccess({
+          authMethod: "passkey-login",
+          userId: user.id,
+          codename: user.codename,
+          nearAccountId: user.nearAccountId,
+          req
+        });
+        if (result.continue === false) {
+          secondFactor = { status: result.status, body: result.body };
+        }
+      }
+      if (passkeyData) {
+        await emit({
+          type: "login.finish.success",
+          rpId,
+          timestamp: Date.now(),
+          backupEligible: deriveBackupEligibility(passkeyData.deviceType)
+        });
+      }
+      if (secondFactor) {
+        return res.status(secondFactor.status).json({
+          ...secondFactor.body,
+          secondFactor
+        });
+      }
+      let backfill;
+      if (sealingKeyHex && config.hooks?.backfillKeyBundle) {
+        try {
+          const result = await config.hooks.backfillKeyBundle({
+            userId: user.id,
+            codename: user.codename,
+            nearAccountId: user.nearAccountId,
+            sealingKeyHex,
+            req
+          });
+          backfill = { backfilled: result.backfilled, reason: result.reason };
+        } catch (err) {
+          log2.warn({ err: redactErrorMessage(err) }, "backfill hook threw");
+          backfill = { backfilled: false, reason: "skipped" };
+        }
       }
       await sessionManager.createSession(user.id, res, {
         ipAddress: req.ip,
@@ -2749,10 +3004,18 @@ function createRouter(config) {
       });
       res.json({
         success: true,
-        codename: user.codename
+        codename: user.codename,
+        ...passkeyData && {
+          passkey: {
+            backedUp: passkeyData.backedUp,
+            backupEligible: deriveBackupEligibility(passkeyData.deviceType)
+          }
+        },
+        ...backfill && { backfill }
       });
     } catch (error) {
       log2.error({ err: error }, "Login finish error");
+      await emit({ type: "login.finish.failure", rpId, timestamp: Date.now(), reason: "internal-error" });
       res.status(500).json({ error: "Authentication failed" });
     }
   });
@@ -2842,6 +3105,7 @@ function createRouter(config) {
           reference: signature.publicKey,
           createdAt: /* @__PURE__ */ new Date()
         });
+        await emit({ type: "recovery.wallet.link.success", rpId, timestamp: Date.now() });
         res.json({
           success: true,
           message: "Wallet linked for recovery. The link is stored on-chain, not in our database."
@@ -2886,6 +3150,7 @@ function createRouter(config) {
           ipAddress: req.ip,
           userAgent: req.headers["user-agent"]
         });
+        await emit({ type: "recovery.wallet.recover.success", rpId, timestamp: Date.now() });
         res.json({
           success: true,
           codename: user.codename,
@@ -2933,6 +3198,7 @@ function createRouter(config) {
           reference: cid,
           createdAt: /* @__PURE__ */ new Date()
         });
+        await emit({ type: "recovery.ipfs.setup.success", rpId, timestamp: Date.now() });
         res.json({
           success: true,
           cid,
@@ -2962,6 +3228,7 @@ function createRouter(config) {
           ipAddress: req.ip,
           userAgent: req.headers["user-agent"]
         });
+        await emit({ type: "recovery.ipfs.recover.success", rpId, timestamp: Date.now() });
         res.json({
           success: true,
           codename: user.codename,
@@ -3009,6 +3276,7 @@ function createRouter(config) {
         await db.deleteRecoveryData(userId);
       }
       await db.deleteUser(userId);
+      await emit({ type: "account.delete", rpId, timestamp: Date.now() });
       res.json({ success: true });
     } catch (error) {
       log2.error({ err: error }, "Account deletion error");
@@ -3098,6 +3366,7 @@ async function verifyRegistration(input) {
         counter: registrationInfo.credential.counter,
         deviceType: registrationInfo.credentialDeviceType,
         backedUp: registrationInfo.credentialBackedUp,
+        backupEligible: deriveBackupEligibility(registrationInfo.credentialDeviceType),
         transports: response.response.transports
       }
     };
@@ -3203,11 +3472,18 @@ function createAnonAuth(config) {
     id: "localhost",
     origin: "http://localhost:3000"
   };
+  const validatedRelatedOrigins = validateRelatedOrigins(
+    config.rp?.relatedOrigins,
+    rpConfig.id,
+    rpConfig.origin
+  );
   const passkeyManager = createPasskeyManager(db, {
     rpName: rpConfig.name,
     rpId: rpConfig.id,
     origin: rpConfig.origin,
-    logger
+    logger,
+    relatedOrigins: validatedRelatedOrigins
+    // Phase 12 RPID-03 thread-through
   });
   const mpcManager = createMPCManager({
     networkId: config.nearNetwork,
@@ -3257,7 +3533,13 @@ function createAnonAuth(config) {
       logger,
       rateLimiting: config.rateLimiting,
       csrf: config.csrf,
-      oauthManager
+      oauthManager,
+      hooks: config.hooks,
+      // Phase 11 HOOK-01
+      rpId: rpConfig.id,
+      // Phase 13 ANALYTICS-01
+      awaitAnalytics: config.awaitAnalytics
+      // Phase 13 ANALYTICS-04
     });
   }
   const middleware = createAuthMiddleware(sessionManager, db, logger);
@@ -3272,7 +3554,13 @@ function createAnonAuth(config) {
     codename: config.codename,
     logger,
     rateLimiting: config.rateLimiting,
-    csrf: config.csrf
+    csrf: config.csrf,
+    hooks: config.hooks,
+    // Phase 11 HOOK-01
+    rpId: rpConfig.id,
+    // Phase 13 ANALYTICS-01
+    awaitAnalytics: config.awaitAnalytics
+    // Phase 13 ANALYTICS-04
   });
   return {
     router,

@@ -5,7 +5,7 @@
  *   1. Compile fixture: hooks omitted — AnonAuthConfig is valid, createAnonAuth does not throw
  *   2. Compile fixture: hooks: {} — all callbacks optional, empty object compiles
  *   3. Threading: hooks accepted at construction time but NEVER invoked (Phase 11 invariant)
- *   4. Invariant grep guard: zero call sites for hook callbacks in src/server
+ *   4. Invariant grep guard: expected call-site counts for hook callbacks in src/server
  *
  * Per 11-RESEARCH.md Open Question #3 recommendation.
  * Per 11-VALIDATION.md Wave 0 requirement.
@@ -110,7 +110,7 @@ describe('HOOK-01: hook call-site invariants (evolving across phases)', () => {
   // Originally a Phase 11 zero-invariant; updated as call sites land:
   //   - Phase 14: afterAuthSuccess wired in router.ts (register-finish + login-finish).
   //     OAuth router invokes via a local helper (runOAuthHook), which does not match this grep.
-  //   - Phase 15: backfillKeyBundle will be wired (still 0 here).
+  //   - Phase 15: backfillKeyBundle wired once in router.ts (/login/finish).
   //   - Phase 13: onAuthEvent is invoked via wrapAnalytics(), not as hooks.onAuthEvent(...),
   //     so this grep still returns 0.
 
@@ -122,12 +122,12 @@ describe('HOOK-01: hook call-site invariants (evolving across phases)', () => {
     expect(out).toBe('2');
   });
 
-  it('grep finds zero call sites for hooks.backfillKeyBundle( (lands in Phase 15)', () => {
+  it('grep finds 1 direct call site for hooks.backfillKeyBundle( in src/server (Phase 15 wired)', () => {
     const out = execSync(
       'grep -r "hooks\\.backfillKeyBundle(" src/server | wc -l',
       { encoding: 'utf-8' }
     ).trim();
-    expect(out).toBe('0');
+    expect(out).toBe('1');
   });
 
   it('grep finds zero direct call sites for hooks.onAuthEvent( (Phase 13 invokes via wrapAnalytics)', () => {

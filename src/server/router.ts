@@ -19,7 +19,7 @@ import pino from 'pino';
 import type { Logger } from 'pino';
 import { generateCodename, isValidCodename } from './codename.js';
 import { deriveBackupEligibility } from './backup.js';
-import { wrapAnalytics } from './analytics.js';
+import { wrapAnalytics, redactErrorMessage } from './analytics.js';
 import { validateBody } from './validation/validateBody.js';
 import {
   registerStartBodySchema,
@@ -373,7 +373,7 @@ export function createRouter(config: RouterConfig): Router {
       const body = validateBody(loginFinishBodySchema, req, res);
       if (!body) return;
 
-      const { challengeId, response } = body;
+      const { challengeId, response, sealingKeyHex } = body;
 
       const { verified, userId, passkeyData } = await passkeyManager.finishAuthentication(
         challengeId,
@@ -436,6 +436,43 @@ export function createRouter(config: RouterConfig): Router {
         });
       }
 
+      // Phase 15 BACKFILL-01..03 fire point.
+      // Pass-through hook for lazy key-bundle backfill. Fires ONLY when
+      // sealingKeyHex was supplied in the request body (no PRF -> no fresh
+      // sealing key -> silent skip; the hook is NOT invoked, no `backfill`
+      // field appears on the response).
+      //
+      // BACKFILL-03 CONTAINMENT (load-bearing): a hook throw or rejected
+      // Promise is caught here. The library logs WARN with redactErrorMessage(err)
+      // (Error.name + first 2 stack frames; sealingKeyHex NEVER appears in
+      // the log payload — same redaction helper as Phase 13 wrapAnalytics, T-15-03)
+      // and continues the login flow. createSession IS still called below;
+      // response carries `backfill: { backfilled: false, reason: 'skipped' }`.
+      // Backfill failure MUST NEVER block login.
+      //
+      // T-15-01: NO `log.info({ ctx })` call here — ctx fields (userId,
+      // codename, nearAccountId, sealingKeyHex, req) are NEVER written to
+      // the library log payload.
+      let backfill:
+        | { backfilled: boolean; reason?: 'already-current' | 'no-legacy-data' | 'completed' | 'skipped' }
+        | undefined;
+      if (sealingKeyHex && config.hooks?.backfillKeyBundle) {
+        try {
+          const result = await config.hooks.backfillKeyBundle({
+            userId: user.id,
+            codename: user.codename,
+            nearAccountId: user.nearAccountId,
+            sealingKeyHex,
+            req,
+          });
+          backfill = { backfilled: result.backfilled, reason: result.reason };
+        } catch (err) {
+          // BACKFILL-03 containment — log redacted, fall through to skipped.
+          log.warn({ err: redactErrorMessage(err) }, 'backfill hook threw');
+          backfill = { backfilled: false, reason: 'skipped' };
+        }
+      }
+
       // continue:true — proceed with normal session creation + standard response.
       // Per D-LOGIN-NEARACCOUNTID: keep existing { success, codename } shape — do NOT add nearAccountId.
       // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
@@ -454,6 +491,7 @@ export function createRouter(config: RouterConfig): Router {
             backupEligible: deriveBackupEligibility(passkeyData.deviceType),
           },
         }),
+        ...(backfill && { backfill }),
       });
     } catch (error) {
       log.error({ err: error }, 'Login finish error');

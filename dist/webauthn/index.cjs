@@ -8,6 +8,11 @@ function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 var pino__default = /*#__PURE__*/_interopDefault(pino);
 
 // src/server/webauthn.ts
+
+// src/server/backup.ts
+function deriveBackupEligibility(deviceType) {
+  return deviceType === "multiDevice";
+}
 var log = pino__default.default({ level: "silent" }).child({ module: "webauthn" });
 async function createRegistrationOptions(input) {
   const {
@@ -67,6 +72,7 @@ async function verifyRegistration(input) {
         counter: registrationInfo.credential.counter,
         deviceType: registrationInfo.credentialDeviceType,
         backedUp: registrationInfo.credentialBackedUp,
+        backupEligible: deriveBackupEligibility(registrationInfo.credentialDeviceType),
         transports: response.response.transports
       }
     };
