@@ -96,13 +96,23 @@ export interface WrapAnalyticsOpts {
  * Redact an Error so its message cannot leak PII into the analytics WARN log.
  *
  * Strategy: keep the error class name (`Error`, `TypeError`, etc.) and the
- * first two lines of the stack trace (file:line, no values). Drop `message`
+ * first frame line of the stack trace (file:line, no values). Drop `message`
  * entirely — consumer-facing error strings often contain user-supplied input
  * (codename fragments, account IDs).
+ *
+ * NOTE: V8's `Error.stack` format is `"<Name>: <message>\n    at <frame>\n..."`,
+ * so the first line of the stack contains the message. We must skip it and
+ * return only frame lines (those starting with whitespace + `at `). This
+ * matches the documented contract — `err.message` MUST NEVER appear in the
+ * returned `stackHead`. Phase 13 ANALYTICS-04 / T-13-25 mitigation.
  */
 export function redactErrorMessage(err: unknown): { name: string; stackHead?: string } {
   if (err instanceof Error) {
-    const stackHead = err.stack?.split('\n').slice(0, 2).join(' | ');
+    const lines = err.stack?.split('\n') ?? [];
+    // Filter to frame lines only (V8 frames start with whitespace then "at ").
+    // This skips the leading "<Name>: <message>" line which carries PII.
+    const frames = lines.filter((line) => /^\s+at\s/.test(line));
+    const stackHead = frames.length > 0 ? frames.slice(0, 2).join(' | ') : undefined;
     return { name: err.name, stackHead };
   }
   return { name: typeof err };
