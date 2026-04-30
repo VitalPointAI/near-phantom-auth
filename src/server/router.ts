@@ -392,15 +392,32 @@ export function createRouter(config: RouterConfig): Router {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Create session
-      await sessionManager.createSession(user.id, res, {
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
+      // ░░ Phase 14 HOOK-03 fire point ░░
+      // No transaction wrapper here — login does no multi-write DB op between verify and
+      // session. A hook throw produces 500 via the existing outer try/catch; no rollback
+      // needed (passkeyManager.finishAuthentication already wrote updatePasskeyCounter
+      // + optional updatePasskeyBackedUp BEFORE this handler returns — those are
+      // replay-protection state that MUST persist regardless of hook outcome).
+      //
+      // Pitfall 7 (T-14-07): optional-chain guard handles undefined hooks.
+      // Pitfall 8 (T-14-08): await the hook.
+      let secondFactor: { status: number; body: Record<string, unknown> } | undefined;
+      if (config.hooks?.afterAuthSuccess) {
+        const result = await config.hooks.afterAuthSuccess({
+          authMethod: 'passkey-login',
+          userId: user.id,
+          codename: user.codename,
+          nearAccountId: user.nearAccountId,
+          req,
+        });
+        if (!result.continue) {
+          secondFactor = { status: result.status, body: result.body };
+        }
+      }
 
-      // Per D-LOGIN-NEARACCOUNTID: keep existing { success, codename } shape — do NOT add nearAccountId.
-      // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
-      // path with no passkeyData still returns a valid { success, codename } response.
+      // Pitfall 4 Option A: emit success FIRST — fires regardless of `continue: true`
+      // vs `continue: false`. The auth itself succeeded; the consumer's second-factor
+      // decision is observability surface, not a re-classification.
       if (passkeyData) {
         await emit({
           type: 'login.finish.success',
@@ -409,6 +426,24 @@ export function createRouter(config: RouterConfig): Router {
           backupEligible: deriveBackupEligibility(passkeyData.deviceType),
         });
       }
+
+      if (secondFactor) {
+        // HOOK-05 short-circuit response. NO Set-Cookie because sessionManager.
+        // createSession was never called (T-14-02 cookie leak mitigation).
+        return res.status(secondFactor.status).json({
+          ...secondFactor.body,
+          secondFactor,
+        });
+      }
+
+      // continue:true — proceed with normal session creation + standard response.
+      // Per D-LOGIN-NEARACCOUNTID: keep existing { success, codename } shape — do NOT add nearAccountId.
+      // Per Pattern S4: append the new passkey key at end with spread guard so a degraded
+      // path with no passkeyData still returns a valid { success, codename } response.
+      await sessionManager.createSession(user.id, res, {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
 
       res.json({
         success: true,
