@@ -123,6 +123,76 @@ export type AfterAuthSuccessResult =
   | { continue: true }
   | { continue: false; status: number; body: Record<string, unknown> };
 
+/**
+ * v0.7.0 — Phase 15 BACKFILL-02. Allowed values for the `reason` field on
+ * a `BackfillKeyBundleResult`. Static enum (not free-form string) so the
+ * library and consumers can switch on the value without parsing.
+ *
+ * - `'already-current'` — the consumer's schema already has a current key
+ *   bundle for this user; nothing to do.
+ * - `'no-legacy-data'` — the consumer has no pre-v0.6.0 NULL-bundle row
+ *   for this user; nothing to backfill.
+ * - `'completed'` — the consumer ran a backfill ceremony and persisted
+ *   the new bundle.
+ * - `'skipped'` — the consumer chose to skip (or the library set this
+ *   reason on a hook throw — see BACKFILL-03).
+ */
+export type BackfillReason =
+  | 'already-current'
+  | 'no-legacy-data'
+  | 'completed'
+  | 'skipped';
+
+/**
+ * v0.7.0 — Phase 15 BACKFILL-01. Hook context for `hooks.backfillKeyBundle`.
+ *
+ * Single-shape (no discriminated union — only one fire site at
+ * `POST /login/finish`). Surfaced ONLY when `sealingKeyHex` was supplied
+ * in the request body (i.e. the authenticator returned a fresh PRF
+ * sealing key). The library does NOT fire this hook when `sealingKeyHex`
+ * is undefined — silent skip is the contract (BACKFILL-01).
+ *
+ * `req` is the bare Express `Request`. The library does NOT sanitize
+ * this surface — the consumer's hook is consumer's code; what they read
+ * from `req` (cookies, headers, body) is their responsibility.
+ *
+ * SECURITY (T-15-01 anonymity invariant): `userId`, `codename`,
+ * `nearAccountId`, AND `sealingKeyHex` are surfaced to the CONSUMER
+ * (intended). The library MUST NOT log or telemetrize these fields —
+ * they are exposed to the consumer's hook by design but never to the
+ * library's pino emissions. (Library logs use `redactErrorMessage` on
+ * any thrown Error; the ctx itself is never written to a log payload.)
+ */
+export interface BackfillKeyBundleCtx {
+  userId: string;
+  codename: string;
+  nearAccountId: string;
+  /** 64-char lowercase hex (validated upstream by loginFinishBodySchema).
+   *  Sensitive material — consumer's hook owns its handling, library
+   *  never logs this field. */
+  sealingKeyHex: string;
+  req: Request;
+}
+
+/**
+ * v0.7.0 — Phase 15 BACKFILL-02. Hook return shape for
+ * `hooks.backfillKeyBundle`.
+ *
+ * `backfilled: boolean` — did the consumer actually persist a new key
+ *   bundle? (false on `'already-current'`, `'no-legacy-data'`, and
+ *   `'skipped'`; true on `'completed'`.)
+ * `reason?: BackfillReason` — optional explicit reason; consumers SHOULD
+ *   set it for observability but the library does not require it.
+ *
+ * Library echoes the result on `AuthenticationFinishResponse.backfill?`
+ * (additive nested key; absent when `sealingKeyHex` was not supplied or
+ * when no hook is configured).
+ */
+export interface BackfillKeyBundleResult {
+  backfilled: boolean;
+  reason?: BackfillReason;
+}
+
 export interface AnonAuthHooks {
   /**
    * v0.7.0 — Phase 14 HOOK-02..06. Fires INSIDE /register/finish (after
@@ -150,8 +220,36 @@ export interface AnonAuthHooks {
    * over throwing for soft failures.
    */
   afterAuthSuccess?: (ctx: AfterAuthSuccessCtx) => Promise<AfterAuthSuccessResult>;
-  /** Phase 15 — fires inside /login/finish when sealingKeyHex was supplied. */
-  backfillKeyBundle?: (ctx: unknown) => Promise<unknown>;
+  /**
+   * v0.7.0 — Phase 15 BACKFILL-01..03. Pass-through hook fired INSIDE
+   * `POST /login/finish` after passkey verify + `db.getUserById`, BEFORE
+   * `sessionManager.createSession` — and ONLY when `sealingKeyHex` was
+   * supplied in the request body (no PRF → no fresh sealing key →
+   * silent skip; the hook is NOT invoked, no `backfill` field appears
+   * on the response).
+   *
+   * Library is **pass-through** by contract: it does NOT persist the
+   * bundle, does NOT wrap the hook in a transaction, and does NOT touch
+   * any consumer-owned schema. The consumer's hook is fully responsible
+   * for migration logic (read legacy NULL-bundle row, derive new
+   * bundle, persist atomically in consumer's own transaction, etc.).
+   *
+   * BACKFILL-03 CONTAINMENT: a hook throw or rejected Promise is
+   * caught by the library, logged WARN with a redacted error payload
+   * (Error.name + first 2 stack frames; sealingKeyHex NEVER appears in
+   * the log), and the response continues with
+   * `backfill: { backfilled: false, reason: 'skipped' }`. **Backfill
+   * failure NEVER blocks login.**
+   *
+   * BACKFILL-04 (consumer responsibilities, documented in README):
+   *   - Library does not persist the key bundle (consumer-owned schema).
+   *   - Library does not run a transaction around the hook.
+   *   - Library does not migrate existing IPFS recovery blobs — those
+   *     remain consumer-owned and may be ORPHANED if the consumer's
+   *     backfill replaces the recovery method (dual-recovery semantics
+   *     explicit).
+   */
+  backfillKeyBundle?: (ctx: BackfillKeyBundleCtx) => Promise<BackfillKeyBundleResult>;
   /** Phase 13 — fires fire-and-forget at lifecycle boundaries on the
    *  passkey router, OAuth router, recovery endpoints, and account-delete.
    *  Errors / rejected Promises are caught by the library and logged WARN
@@ -651,6 +749,15 @@ export interface AuthenticationFinishResponse {
   /** v0.7.0 — HOOK-05 echo of consumer's hook short-circuit. Same
    *  contract as `RegistrationFinishResponse.secondFactor`. */
   secondFactor?: { status: number; body: Record<string, unknown> };
+  /** v0.7.0 — BACKFILL-02 echo of the consumer's `hooks.backfillKeyBundle`
+   *  result. Present on responses where `sealingKeyHex` was supplied AND
+   *  a hook was configured. Absent when:
+   *    - `sealingKeyHex` was NOT supplied (silent skip — BACKFILL-01);
+   *    - no `hooks.backfillKeyBundle` was configured;
+   *  Present with `{ backfilled: false, reason: 'skipped' }` when the
+   *  hook threw or rejected (BACKFILL-03 — library catches, logs WARN
+   *  with redacted error, login continues normally). */
+  backfill?: { backfilled: boolean; reason?: BackfillReason };
 }
 
 export interface RecoveryWalletLinkResponse {

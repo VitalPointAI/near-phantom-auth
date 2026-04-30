@@ -265,6 +265,9 @@ export type {
   AfterAuthSuccessCtx,           // Phase 14 HOOK-02..04 re-export
   AfterAuthSuccessResult,        // Phase 14 HOOK-02..05 re-export
   AfterAuthSuccessProvider,      // Phase 14 HOOK-04 re-export
+  BackfillKeyBundleCtx,          // Phase 15 BACKFILL-01 re-export
+  BackfillKeyBundleResult,       // Phase 15 BACKFILL-02 re-export
+  BackfillReason,                // Phase 15 BACKFILL-02 re-export (literal union)
   RelatedOrigin,        // Phase 12 RPID-01 re-export
   DatabaseAdapter,
   AnonUser,
