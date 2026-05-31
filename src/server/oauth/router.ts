@@ -280,6 +280,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
 
         // Existing user - update last active and create session
         await sessionManager.createSession(user.id, res, {
+          track: 'oauth',
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
         });
@@ -330,6 +331,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
           }
 
           await sessionManager.createSession(user.id, res, {
+            track: 'oauth',
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
           });
@@ -435,6 +437,7 @@ export function createOAuthRouter(config: OAuthRouterConfig): Router {
 
       // Create session
       await sessionManager.createSession(newUser.id, res, {
+        track: 'oauth',
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       });

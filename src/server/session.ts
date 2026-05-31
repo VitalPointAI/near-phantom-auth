@@ -8,7 +8,7 @@
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import { isIP } from 'net';
 import type { Response, Request } from 'express';
-import type { Session, CreateSessionInput, DatabaseAdapter, SessionMetadataConfig } from '../types/index.js';
+import type { Session, CreateSessionInput, DatabaseAdapter, SessionMetadataConfig, SessionTrack } from '../types/index.js';
 import pino from 'pino';
 import type { Logger } from 'pino';
 
@@ -40,7 +40,7 @@ export interface SessionManager {
   createSession(
     userId: string,
     res: Response,
-    options?: { ipAddress?: string; userAgent?: string }
+    options?: { ipAddress?: string; userAgent?: string; track?: SessionTrack }
   ): Promise<Session>;
   
   getSession(req: Request): Promise<Session | null>;
@@ -206,6 +206,7 @@ export function createSessionManager(
       
       const sessionInput: CreateSessionInput = {
         userId,
+        track: options.track ?? 'anonymous',
         expiresAt,
         ipAddress: metadata.ipAddress,
         userAgent: metadata.userAgent,

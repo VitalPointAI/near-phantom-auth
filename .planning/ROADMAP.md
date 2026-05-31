@@ -6,6 +6,7 @@
 - ✅ **v0.6.0 PRF Extension** — Phase 9 (shipped 2026-03-15; deferred PRF browser-test items remain — see `STATE.md > Deferred Items`)
 - ✅ **v0.6.1 MPCAccountManager hotfix** — Phase 10 (shipped 2026-04-29; published as `@vitalpoint/near-phantom-auth@0.6.1`) — see [milestones/v0.6.1-ROADMAP.md](milestones/v0.6.1-ROADMAP.md)
 - 🚧 **v0.7.0 Consumer Hooks & Recovery Hardening** — Phases 11–16 (planning 2026-04-29; 30 v1 requirements across 6 phases; additive minor bump on top of v0.6.1)
+- ✅ **v0.8.x Enterprise Identity Module** — Phase 18 (completed 2026-05-31; opt-in enterprise identity binding + SCIM lifecycle module)
 
 ## Phases
 
@@ -190,6 +191,7 @@ Additive minor bump exposing five consumer-facing extension points: backup-eligi
 | 15. Lazy-Backfill Hook | v0.7.0 | 4/4 | Complete | 2026-04-30 |
 | 16. Release Prep | v0.7.0 | 4/4 | Complete | 2026-04-30 |
 | 17. Session Metadata Anonymity Hardening | v0.7.x | 4/4 | Complete | 2026-04-30 |
+| 18. Enterprise Identity Module | v0.8.x | 7/7 | Complete | 2026-05-31 |
 
 ### Phase 17: Session Metadata Anonymity Hardening
 
@@ -217,3 +219,38 @@ Plans:
 - **SESSION-03**: Policy transformation happens centrally in `createSessionManager` before `db.createSession`; route handlers may continue passing `req.ip` and `user-agent`.
 - **SESSION-04**: Existing analytics and logging PII guards remain enforced; no lifecycle event or log call may include raw session metadata.
 - **SESSION-05**: README and changelog document the policy modes and clearly state that session IP/user-agent storage is configurable rather than inherently required.
+
+### Phase 18: Incorporate enterprise identity module specification from specs/near-phantom-auth-enterprise-spec.md
+
+**Milestone:** v0.8.x
+**Goal:** Add an opt-in enterprise identity-binding module that maps external IdP subjects to NEAR DID/MPC accounts, exposes SCIM lifecycle provisioning, and preserves the anonymous-first default behavior when `enterprise` config is absent.
+**Requirements**: ENT-01, ENT-02, ENT-03, ENT-04, ENT-05, ENT-06, ENT-07, ENT-08
+**Depends on:** Phase 17
+**Success Criteria** (what must be TRUE):
+  1. A consumer omitting `enterprise` config gets no enterprise tables, routes, middleware behavior changes, or required adapter methods; anonymous behavior remains backwards-compatible.
+  2. Enterprise identities live on a third track (`enterprise_users`) with no joins or PII writes into `anon_users`, anonymous sessions, anonymous route responses, or analytics events.
+  3. `auth.enterprise` supports typed link/unlink/resolve/status methods, idempotent binding by `(externalIdp, externalSub)`, optional MPC minting, and secret-free enterprise events.
+  4. Enterprise sessions carry a track discriminator and suspended/deprovisioned enterprise identities lose live-session access at the next request and through explicit session deletion on status change.
+  5. `auth.scimRouter` provides the SCIM 2.0 Users/Groups/ServiceProviderConfig subset behind constant-time bearer authentication; SCIM `active:false` and DELETE revoke access.
+  6. README and CHANGELOG document the opt-in enterprise module, three-track anonymity model, package/application policy boundary, and PRF/DEK interplay (`passkeyStepUp` vs `serverManagedDek`).
+**Plans:** 7/7 plans complete
+
+Plans:
+- [x] 18-01-PLAN.md (Wave 0) - Enterprise config/types, default-off exports, Wave 0 anonymity/default-off tests
+- [x] 18-02-PLAN.md (Wave 1) - Conditional enterprise Postgres schema and adapter persistence methods
+- [x] 18-03-PLAN.md (Wave 1) - `auth.enterprise` binding API, typed errors, events, MPC minting/idempotency
+- [x] 18-04-PLAN.md (Wave 2) - Session track discriminator, enterprise middleware enforcement, live-session invalidation
+- [x] 18-05-PLAN.md (Wave 3) - SCIM Users endpoint, bearer auth, idempotent provisioning, deprovisioning critical path
+- [x] 18-06-PLAN.md (Wave 3) - SCIM Groups and ServiceProviderConfig with mechanism-only group handling
+- [x] 18-07-PLAN.md (Wave 4) - README/CHANGELOG/anonymity audit, PRF/DEK docs, final focused suite/typecheck/build
+
+## v0.8.x Enterprise Identity Module Requirements
+
+- **ENT-01**: `AnonAuthConfig.enterprise?` is optional and disabled by default; absent config creates no enterprise routes, no enterprise tables, no enterprise middleware database calls, and no new required adapter methods for default consumers.
+- **ENT-02**: Enterprise identities are stored as a third track (`enterprise_users`) with `externalIdp`, `externalSub`, optional `externalAttrs`, optional `scimId`, `status`, and `nearAccountId`; enterprise PII never writes into `anon_users` or anonymous session/analytics surfaces.
+- **ENT-03**: `auth.enterprise` exposes typed `linkIdentity`, `unlinkIdentity`, `resolveByExternalId`, `resolveByNearAccount`, and `setStatus` methods; binding is idempotent by `(externalIdp, externalSub)` and emits secret-free enterprise lifecycle events.
+- **ENT-04**: Sessions support a track discriminator (`anonymous`, `oauth`, `enterprise`); enterprise sessions check `enterprise_users.status` on protected requests and suspended/deprovisioned identities lose live-session access.
+- **ENT-05**: `auth.scimRouter` implements the SCIM 2.0 Users subset behind constant-time bearer authentication; provisioning is idempotent and `active:false`/DELETE revoke access and invalidate sessions.
+- **ENT-06**: SCIM Groups and ServiceProviderConfig are supported as mechanism only; groups map to enterprise external attributes and the package does not implement role, permission, scope, audit-log, or product-mode policy.
+- **ENT-07**: Enterprise PRF/DEK interplay is documented and typed: `passkeyStepUp` supports authenticator-rooted sealing keys, `serverManagedDek` supports IdP-only enterprise deployments, and pure IdP auth without step-up does not provide WebAuthn PRF properties.
+- **ENT-08**: README, CHANGELOG, and regression tests document and enforce the opt-in three-track anonymity model, package/application policy boundary, and additive/backwards-compatible API surface.

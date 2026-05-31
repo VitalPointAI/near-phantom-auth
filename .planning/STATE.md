@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.7.0
-milestone_name: Consumer Hooks & Recovery Hardening
+milestone: v0.8.x
+milestone_name: Enterprise Identity Module
 status: complete
-stopped_at: Phase 17 executed and verified. No active phase pending.
-last_updated: "2026-04-30T19:00:00.000Z"
-last_activity: 2026-04-30 -- Phase 17 complete
+stopped_at: Phase 18 executed and verified.
+last_updated: "2026-05-31T00:00:00.000Z"
+last_activity: 2026-05-31 -- Phase 18 executed and verified
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 31
-  completed_plans: 31
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 38
+  completed_plans: 38
   percent: 100
 ---
 
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29)
 
 **Core value:** Every security-sensitive code path must be correct, tested, and production-safe
-**Current focus:** Phase 17 — session-metadata-anonymity-hardening complete
+**Current focus:** Phase 18 — enterprise identity module executed and verified
 
 ## Current Position
 
-Phase: 17 (session-metadata-anonymity-hardening) — COMPLETE
-Plan: 4 of 4
-Status: Verified
-Last activity: 2026-04-30 -- Phase 17 complete
+Phase: 18 (incorporate-enterprise-identity-module-specification-from-sp) — COMPLETE
+Plan: 7 of 7
+Status: Executed and verified
+Last activity: 2026-05-31 -- Phase 18 executed and verified
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23 (v0.5.x: Phases 1–8) + 6 (v0.6.1 Phase 10) + 3 (v0.6.0 Phase 9) = 18 across all milestones
+- Total plans completed: 38 across all milestones through Phase 18
 - Average duration: -
 - Total execution time: 0 hours (v0.7.0 not started)
 
@@ -46,15 +46,17 @@ Last activity: 2026-04-30 -- Phase 17 complete
 | 10 | 6 | - | - |
 | 11 | 6 | - | - |
 | 12 | 4 | - | - |
-| 13 | TBD | - | - |
+| 13 | 5 | - | - |
 | 14 | 4 | - | - |
 | 15 | 4 | - | - |
 | 16 | 4 | - | - |
+| 17 | 4 | - | - |
+| 18 | 7 | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: Phase 10-01 through 10-06 (v0.6.1 hotfix)
-- Trend: Sequential clean execution after worktree-base-mismatch + sandbox issues recovered in Phase 10
+- Last 5 plans: Phase 18-03 through 18-07
+- Trend: Sequential inline execution with focused and full-suite verification
 
 *Updated after each plan completion*
 | Phase 11 P03 | 5min | 1 tasks | 1 files |
@@ -79,6 +81,13 @@ Last activity: 2026-04-30 -- Phase 17 complete
 | Phase 17 P02 | - | 3 tasks | 3 files |
 | Phase 17 P03 | - | 2 tasks | 3 files |
 | Phase 17 P04 | - | 3 tasks | 2 files |
+| Phase 18 P01 | - | 4 tasks | types/tests |
+| Phase 18 P02 | - | 4 tasks | postgres/schema |
+| Phase 18 P03 | - | 5 tasks | enterprise binding |
+| Phase 18 P04 | - | 5 tasks | sessions/middleware |
+| Phase 18 P05 | - | 5 tasks | SCIM Users |
+| Phase 18 P06 | - | 4 tasks | SCIM Groups |
+| Phase 18 P07 | - | 6 tasks | docs/tests |
 
 ## Accumulated Context
 
@@ -135,10 +144,14 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Phase 17 added: Session Metadata Anonymity Hardening — reduce linkability from session IP/user-agent storage via configurable omission, hashing, or truncation.
 - Phase 17 completed: `sessionMetadata` now supports independent IP/user-agent persistence policies (`store`, `omit`, `hash`, IP-only `truncate`), with README privacy-audit updates and analytics/logging PII regression guards.
 - Phase 17 verification: non-breaking production audit fixes updated transitive `fast-xml-parser` to 5.7.2 and `path-to-regexp` to 8.4.2 in `package-lock.json`; residual production audit finding remains in NEAR's `@near-js/crypto -> secp256k1 -> elliptic` chain, where npm's suggested fix is breaking.
+- Phase 18 added: Incorporate enterprise identity module specification from specs/near-phantom-auth-enterprise-spec.md.
+- Phase 18 planned: 7 plans covering enterprise config/default-off tests, conditional persistence, binding API/events, session-track enforcement, SCIM Users, SCIM Groups/ServiceProviderConfig, and docs/anonymity audit.
+- Phase 18 completed: opt-in enterprise config/types, conditional enterprise Postgres schema, `auth.enterprise` binding API, enterprise session track enforcement, SCIM Users/Groups/ServiceProviderConfig, and README/CHANGELOG/anonymity documentation all landed.
+- Phase 18 verification: `npm run typecheck`, focused enterprise suite (38 tests), full `npm test -- --run` (518 passed / 4 skipped), and `npm run build` passed.
 
 ### Pending Todos
 
-None.
+- None for Phase 18 execution.
 
 ## Deferred Items
 

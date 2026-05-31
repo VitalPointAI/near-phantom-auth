@@ -62,9 +62,30 @@ Requirements for v0.7.0. Each maps to roadmap phases.
 - [ ] **RELEASE-03**: `package.json` version bumped to `0.7.0`; `npm run build` succeeds; `npm pack` smoke-installs into a fresh-consumer fixture and `import { createAnonAuth } from '@vitalpoint/near-phantom-auth/server'` resolves with new hook surface visible in TypeScript autocomplete.
 - [ ] **RELEASE-04**: `npm publish @vitalpoint/near-phantom-auth@0.7.0` succeeds; git tag `v0.7.0` pushed to origin; existing v0.6.1 consumer fixtures continue to compile and run without changes (backwards-compat assertion).
 
-## v2 Requirements (deferred to v0.8+)
+## v0.8.x Enterprise Identity Module Requirements
 
-These are valuable but explicitly out of scope for v0.7.0.
+Derived from `specs/near-phantom-auth-enterprise-spec.md`. These requirements are additive and opt-in; they must not weaken the anonymous-first package default.
+
+### Enterprise Binding and Track Isolation
+
+- [ ] **ENT-01**: `AnonAuthConfig.enterprise?` is optional and disabled by default. If absent, `createAnonAuth` exposes no enterprise API/router, `initialize()` creates no enterprise tables, middleware performs no enterprise lookup, and custom adapters need no new enterprise methods.
+- [ ] **ENT-02**: Enterprise identities are stored as a third track (`enterprise_users`) separate from `anon_users` and `oauth_users`, with `externalIdp`, `externalSub`, optional `externalAttrs`, optional `scimId`, `status`, and `nearAccountId`. Enterprise PII must never write into anonymous users, anonymous sessions, anonymous route responses, pino logs, or `AnalyticsEvent`.
+- [ ] **ENT-03**: `auth.enterprise` exposes typed `linkIdentity`, `unlinkIdentity`, `resolveByExternalId`, `resolveByNearAccount`, and `setStatus` methods. Binding is idempotent by `(externalIdp, externalSub)`, can mint an MPC account when `nearAccountId` is omitted, and emits secret-free lifecycle events.
+- [ ] **ENT-04**: Sessions support `track: 'anonymous' | 'oauth' | 'enterprise'`. Enterprise sessions consult `enterprise_users.status` during auth middleware/`requireAuth`; `suspended` and `deprovisioned` users are denied and their live enterprise sessions are invalidated.
+
+### SCIM Lifecycle
+
+- [ ] **ENT-05**: `auth.scimRouter` implements SCIM 2.0 Users endpoints (`POST`, `GET`, filtered `GET`, `PATCH`, `PUT`, `DELETE`) behind constant-time bearer token authentication. Provisioning is idempotent; `active:false` and DELETE call the revoke/deprovision path and sever live enterprise access.
+- [ ] **ENT-06**: SCIM Groups and ServiceProviderConfig are supported for IdP compatibility. Group lifecycle data maps only to `enterprise_users.externalAttrs.groups`; role-to-permission mapping, audit-log format/sink, dashboard scopes, and product-mode policy stay in the consuming application.
+
+### Docs and PRF/DEK Boundary
+
+- [ ] **ENT-07**: Enterprise PRF/DEK interplay is documented and typed. `enterprise.passkeyStepUp` lets consumers require WebAuthn/passkey step-up for authenticator-rooted PRF sealing keys; `enterprise.serverManagedDek` supports IdP-only enterprise deployments; pure IdP auth without step-up does not provide WebAuthn PRF properties.
+- [ ] **ENT-08**: README, CHANGELOG, and regression tests document/enforce the opt-in three-track anonymity model, package/application policy boundary, additive API surface, and deferred OIDC/SAML connector scope.
+
+## v2 Requirements (deferred to future milestones)
+
+These are valuable but explicitly out of scope for the completed v0.7.x work and the Phase 18 enterprise module.
 
 ### Hooks Surface
 
@@ -144,12 +165,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RELEASE-02 | Phase 16 | Pending |
 | RELEASE-03 | Phase 16 | Pending |
 | RELEASE-04 | Phase 16 | Pending |
+| ENT-01 | Phase 18 | Planned |
+| ENT-02 | Phase 18 | Planned |
+| ENT-03 | Phase 18 | Planned |
+| ENT-04 | Phase 18 | Planned |
+| ENT-05 | Phase 18 | Planned |
+| ENT-06 | Phase 18 | Planned |
+| ENT-07 | Phase 18 | Planned |
+| ENT-08 | Phase 18 | Planned |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 30 ✓
-- Unmapped: 0 ✓
-- Double-mapped: 0 ✓
+- v0.7.0 v1 requirements: 30 total
+- Phase 18 enterprise requirements: 8 total
+- Total tracked requirements: 38
+- Mapped to phases: 38
+- Unmapped: 0
+- Double-mapped: 0
 
 **Phase coverage breakdown:**
 - Phase 11 (Backup-Eligibility + Hooks Scaffolding): 6 reqs (BACKUP-01..05, HOOK-01)
@@ -158,8 +189,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 - Phase 14 (2FA Hook): 5 reqs (HOOK-02..06)
 - Phase 15 (Lazy-Backfill): 4 reqs (BACKFILL-01..04)
 - Phase 16 (Release Prep): 4 reqs (RELEASE-01..04)
-- Total: 30 ✓
+- Phase 18 (Enterprise Identity Module): 8 reqs (ENT-01..08)
+- Total tracked: 38
 
 ---
 *Requirements defined: 2026-04-29*
-*Last updated: 2026-04-29 — roadmap created; 30 v1 requirements mapped across Phases 11–16; coverage 100%.*
+*Last updated: 2026-05-31 — Phase 18 enterprise identity module requirements added from specs/near-phantom-auth-enterprise-spec.md.*

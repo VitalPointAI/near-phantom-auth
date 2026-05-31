@@ -10,6 +10,9 @@ import type {
   CreateOAuthUserInput,
   OAuthProvider,
   OAuthStateRecord,
+  EnterpriseStatus,
+  EnterpriseUser,
+  CreateEnterpriseUserInput,
   Session,
   CreateSessionInput,
   Passkey,
@@ -132,6 +135,28 @@ CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);
 `;
 
 /**
+ * Optional enterprise identity schema. This is intentionally separate from
+ * POSTGRES_SCHEMA so default installs do not create enterprise tables.
+ */
+export const POSTGRES_ENTERPRISE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS enterprise_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  near_account_id TEXT NOT NULL,
+  external_idp TEXT NOT NULL,
+  external_sub TEXT NOT NULL,
+  external_attrs JSONB,
+  scim_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (external_idp, external_sub)
+);
+
+CREATE INDEX IF NOT EXISTS idx_enterprise_near ON enterprise_users (near_account_id);
+CREATE INDEX IF NOT EXISTS idx_enterprise_scim ON enterprise_users (scim_id);
+`;
+
+/**
  * Map JOIN query result rows (oauth_users LEFT JOIN oauth_providers) into an OAuthUser object.
  * Returns null if no user was found (empty rows or first row has no user id).
  */
@@ -167,6 +192,22 @@ function mapOAuthUserRows(rows: Record<string, unknown>[]): OAuthUser | null {
     providers,
     createdAt: first.created_at as Date,
     lastActiveAt: first.last_active_at as Date,
+  };
+}
+
+function mapEnterpriseUserRow(row: Record<string, unknown> | undefined): EnterpriseUser | null {
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    type: 'enterprise',
+    nearAccountId: row.near_account_id as string,
+    externalIdp: row.external_idp as string,
+    externalSub: row.external_sub as string,
+    externalAttrs: (row.external_attrs as Record<string, unknown> | null) ?? undefined,
+    scimId: (row.scim_id as string | null) ?? undefined,
+    status: row.status as EnterpriseStatus,
+    createdAt: row.created_at as Date,
+    updatedAt: row.updated_at as Date,
   };
 }
 
@@ -288,15 +329,16 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
 
       async createSession(input: CreateSessionInput & { id?: string }): Promise<Session> {
         const result = await client.query(
-          `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
-           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
-           RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
-          [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+          `INSERT INTO anon_sessions (id, user_id, user_type, expires_at, ip_address, user_agent)
+           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+           RETURNING id, user_id, user_type, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+          [input.id || null, input.userId, input.track || 'anonymous', input.expiresAt, input.ipAddress || null, input.userAgent || null]
         );
         const row = result.rows[0];
         return {
           id: row.id,
           userId: row.user_id,
+          track: row.user_type || 'anonymous',
           createdAt: row.created_at,
           expiresAt: row.expires_at,
           lastActivityAt: row.last_activity_at,
@@ -661,16 +703,17 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
     async createSession(input: CreateSessionInput & { id?: string }): Promise<Session> {
       const p = await getPool();
       const result = await p.query(
-        `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
-         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
-         RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
-        [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+        `INSERT INTO anon_sessions (id, user_id, user_type, expires_at, ip_address, user_agent)
+         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+         RETURNING id, user_id, user_type, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+        [input.id || null, input.userId, input.track || 'anonymous', input.expiresAt, input.ipAddress || null, input.userAgent || null]
       );
       
       const row = result.rows[0];
       return {
         id: row.id,
         userId: row.user_id,
+        track: row.user_type || 'anonymous',
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         lastActivityAt: row.last_activity_at,
@@ -692,6 +735,7 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
       return {
         id: row.id,
         userId: row.user_id,
+        track: row.user_type || 'anonymous',
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         lastActivityAt: row.last_activity_at,
@@ -722,6 +766,11 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
         'UPDATE anon_sessions SET expires_at = $1 WHERE id = $2',
         [newExpiresAt, sessionId]
       );
+    },
+
+    async deleteSessionsByUserAndTrack(userId: string, track: 'anonymous' | 'oauth' | 'enterprise'): Promise<void> {
+      const p = await getPool();
+      await p.query('DELETE FROM anon_sessions WHERE user_id = $1 AND user_type = $2', [userId, track]);
     },
 
     async storeChallenge(challenge: Challenge): Promise<void> {
@@ -791,6 +840,102 @@ export function createPostgresAdapter(config: PostgresConfig): DatabaseAdapter {
         reference: row.reference,
         createdAt: row.created_at,
       };
+    },
+
+    async initializeEnterprise(): Promise<void> {
+      const p = await getPool();
+      await p.query(POSTGRES_ENTERPRISE_SCHEMA);
+    },
+
+    async createEnterpriseUser(input: CreateEnterpriseUserInput): Promise<EnterpriseUser> {
+      const p = await getPool();
+      const result = await p.query(
+        `INSERT INTO enterprise_users (near_account_id, external_idp, external_sub, external_attrs, scim_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          input.nearAccountId,
+          input.externalIdp,
+          input.externalSub,
+          input.externalAttrs ? JSON.stringify(input.externalAttrs) : null,
+          input.scimId || null,
+          input.status || 'active',
+        ]
+      );
+      return mapEnterpriseUserRow(result.rows[0])!;
+    },
+
+    async getEnterpriseUserById(id: string): Promise<EnterpriseUser | null> {
+      const p = await getPool();
+      const result = await p.query('SELECT * FROM enterprise_users WHERE id = $1', [id]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+
+    async getEnterpriseUserByExternalId(externalIdp: string, externalSub: string): Promise<EnterpriseUser | null> {
+      const p = await getPool();
+      const result = await p.query(
+        'SELECT * FROM enterprise_users WHERE external_idp = $1 AND external_sub = $2',
+        [externalIdp, externalSub]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+
+    async getEnterpriseUserByNearAccount(nearAccountId: string): Promise<EnterpriseUser | null> {
+      const p = await getPool();
+      const result = await p.query('SELECT * FROM enterprise_users WHERE near_account_id = $1', [nearAccountId]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+
+    async getEnterpriseUserByScimId(scimId: string): Promise<EnterpriseUser | null> {
+      const p = await getPool();
+      const result = await p.query('SELECT * FROM enterprise_users WHERE scim_id = $1', [scimId]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+
+    async updateEnterpriseUser(
+      id: string,
+      patch: Partial<Pick<EnterpriseUser, 'externalAttrs' | 'scimId' | 'status'>>
+    ): Promise<EnterpriseUser> {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users
+         SET external_attrs = COALESCE($2, external_attrs),
+             scim_id = COALESCE($3, scim_id),
+             status = COALESCE($4, status),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [
+          id,
+          patch.externalAttrs === undefined ? null : JSON.stringify(patch.externalAttrs),
+          patch.scimId ?? null,
+          patch.status ?? null,
+        ]
+      );
+      return mapEnterpriseUserRow(result.rows[0])!;
+    },
+
+    async setEnterpriseUserStatus(id: string, status: EnterpriseStatus): Promise<EnterpriseUser> {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id, status]
+      );
+      return mapEnterpriseUserRow(result.rows[0])!;
+    },
+
+    async deleteEnterpriseUser(id: string): Promise<void> {
+      const p = await getPool();
+      await p.query('DELETE FROM enterprise_users WHERE id = $1', [id]);
+    },
+
+    async updateEnterpriseExternalAttrs(id: string, externalAttrs: Record<string, unknown>): Promise<EnterpriseUser> {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users SET external_attrs = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id, JSON.stringify(externalAttrs)]
+      );
+      return mapEnterpriseUserRow(result.rows[0])!;
     },
 
     async transaction<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> {

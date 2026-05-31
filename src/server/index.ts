@@ -32,7 +32,7 @@
  */
 
 import type { Router, RequestHandler } from 'express';
-import type { AnonAuthConfig, DatabaseAdapter } from '../types/index.js';
+import type { AnonAuthConfig, DatabaseAdapter, EnterpriseBindingApi } from '../types/index.js';
 import pino from 'pino';
 import { createPostgresAdapter } from './db/adapters/postgres.js';
 import { createSessionManager, type SessionManager } from './session.js';
@@ -46,6 +46,8 @@ import { createEmailService, type EmailService } from './email.js';
 import { createOAuthRouter } from './oauth/router.js';
 import { createAuthMiddleware, createRequireAuth } from './middleware.js';
 import { createRouter } from './router.js';
+import { createEnterpriseBinding } from './enterprise/index.js';
+import { createScimRouter } from './enterprise/scim.js';
 
 export interface AnonAuthInstance {
   /** Express router with all auth endpoints (passkey) */
@@ -53,6 +55,12 @@ export interface AnonAuthInstance {
   
   /** OAuth router for OAuth providers */
   oauthRouter?: Router;
+
+  /** SCIM router for enterprise provisioning */
+  scimRouter?: Router;
+
+  /** Enterprise binding API */
+  enterprise?: EnterpriseBindingApi;
   
   /** Middleware that attaches user to request if authenticated */
   middleware: RequestHandler;
@@ -186,6 +194,24 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   // Create OAuth manager and router
   let oauthManager: OAuthManager | undefined;
   let oauthRouter: Router | undefined;
+  const enterpriseEnabled = config.enterprise?.enabled === true;
+  const enterprise = enterpriseEnabled
+    ? createEnterpriseBinding({
+        db,
+        mpcManager,
+        enterpriseConfig: config.enterprise!,
+        logger,
+      })
+    : undefined;
+  const scimRouter = enterpriseEnabled && config.enterprise?.scim?.enabled && enterprise
+    ? createScimRouter({
+        db,
+        enterprise,
+        enterpriseConfig: config.enterprise,
+        rateLimiting: config.rateLimiting,
+        logger,
+      })
+    : undefined;
 
   if (config.oauth) {
     oauthManager = createOAuthManager(
@@ -238,11 +264,19 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
   return {
     router,
     oauthRouter,
+    scimRouter,
+    enterprise,
     middleware,
     requireAuth,
     
     async initialize() {
       await db.initialize();
+      if (enterpriseEnabled) {
+        if (!db.initializeEnterprise) {
+          throw new Error('Enterprise module requires DatabaseAdapter.initializeEnterprise()');
+        }
+        await db.initializeEnterprise();
+      }
     },
     
     db,
@@ -270,6 +304,13 @@ export type {
   BackfillKeyBundleResult,       // Phase 15 BACKFILL-02 re-export
   BackfillReason,                // Phase 15 BACKFILL-02 re-export (literal union)
   RelatedOrigin,        // Phase 12 RPID-01 re-export
+  EnterpriseConfig,
+  EnterpriseUser,
+  CreateEnterpriseUserInput,
+  EnterpriseStatus,
+  EnterpriseBindingApi,
+  EnterpriseEventMap,
+  SessionTrack,
   DatabaseAdapter,
   AnonUser,
   OAuthUser,
@@ -290,9 +331,11 @@ export type { WalletRecoveryManager } from './recovery/wallet.js';
 export type { IPFSRecoveryManager, IPFSRecoveryConfig } from './recovery/ipfs.js';
 export type { OAuthManager, OAuthProfile, OAuthTokens, OAuthProviderConfig } from './oauth/index.js';
 export { generateCodename, isValidCodename } from './codename.js';
-export { createPostgresAdapter, POSTGRES_SCHEMA } from './db/adapters/postgres.js';
+export { createPostgresAdapter, POSTGRES_SCHEMA, POSTGRES_ENTERPRISE_SCHEMA } from './db/adapters/postgres.js';
 export { createOAuthManager } from './oauth/index.js';
 export { createOAuthRouter } from './oauth/router.js';
+export { createEnterpriseBinding } from './enterprise/index.js';
+export { createScimRouter } from './enterprise/scim.js';
 
 // Standalone WebAuthn utilities (framework-agnostic)
 export {

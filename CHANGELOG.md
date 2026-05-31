@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-31
+
+### Added
+- Enterprise Identity Module (v0.8.x, opt-in/additive): optional
+  `enterprise` config, `auth.enterprise` binding API, conditional
+  `enterprise_users` persistence, SCIM Users/Groups/ServiceProviderConfig
+  router, and enterprise session offboarding checks.
+
+### Compatibility
+- Enterprise support is off by default. Consumers that omit `enterprise` keep
+  the existing anonymous-first behavior, no enterprise routes, and no enterprise
+  schema initialization.
+- The package continues to separate anonymous, OAuth, and enterprise identity
+  tracks. Enterprise PII stays out of anonymous records and analytics events.
+
 ## [0.7.1] — 2026-04-30
 
 ### Added

@@ -136,6 +136,126 @@ interface SessionMetadataConfig {
      *  supported because UA strings do not have a stable network-prefix analogue. */
     userAgent?: SessionMetadataUserAgentPolicy;
 }
+type EnterpriseStatus = 'active' | 'suspended' | 'deprovisioned';
+type SessionTrack = 'anonymous' | 'oauth' | 'enterprise';
+interface EnterpriseConfig {
+    /** Enable the opt-in enterprise identity module. Absent/false preserves anonymous-first behavior. */
+    enabled?: boolean;
+    binding?: {
+        /** Mint an MPC account when linkIdentity omits nearAccountId. Default true. */
+        mintMpcIfMissing?: boolean;
+    };
+    /** Require a passkey step-up after IdP auth to obtain WebAuthn PRF sealing keys. */
+    passkeyStepUp?: boolean;
+    /** Consumer uses a server/enclave-managed DEK path for IdP-only enterprise users. */
+    serverManagedDek?: boolean;
+    scim?: {
+        enabled?: boolean;
+        /** Bearer token presented by the IdP. The package validates; it does not issue this token. */
+        bearerToken: string;
+        /** Stable IdP label used for SCIM-created identities. Default `scim`. */
+        externalIdp?: string;
+        /** Optional SCIM attribute path -> externalAttrs key mapping. */
+        attributeMapping?: Record<string, string>;
+    };
+}
+interface EnterpriseUser {
+    id: string;
+    type: 'enterprise';
+    nearAccountId: string;
+    externalIdp: string;
+    externalSub: string;
+    externalAttrs?: Record<string, unknown>;
+    scimId?: string;
+    status: EnterpriseStatus;
+    createdAt: Date;
+    updatedAt: Date;
+}
+interface CreateEnterpriseUserInput {
+    nearAccountId: string;
+    externalIdp: string;
+    externalSub: string;
+    externalAttrs?: Record<string, unknown>;
+    scimId?: string;
+    status?: EnterpriseStatus;
+}
+type EnterpriseEventMap = {
+    'identity.linked': {
+        externalIdp: string;
+        externalSub: string;
+        nearAccountId: string;
+        enterpriseUserId: string;
+        ts: number;
+    };
+    'identity.unlinked': {
+        externalIdp: string;
+        externalSub: string;
+        nearAccountId?: string;
+        mode: 'revoke' | 'delete';
+        ts: number;
+    };
+    'identity.status': {
+        externalIdp: string;
+        externalSub: string;
+        nearAccountId: string;
+        from: EnterpriseStatus;
+        to: EnterpriseStatus;
+        ts: number;
+    };
+    'scim.provisioned': {
+        externalIdp: string;
+        externalSub: string;
+        nearAccountId: string;
+        enterpriseUserId: string;
+        ts: number;
+    };
+    'scim.deprovisioned': {
+        externalIdp: string;
+        externalSub: string;
+        nearAccountId?: string;
+        enterpriseUserId?: string;
+        ts: number;
+    };
+};
+interface EnterpriseBindingApi {
+    linkIdentity(input: {
+        externalIdp: string;
+        externalSub: string;
+        externalAttrs?: Record<string, unknown>;
+        nearAccountId?: string;
+        scimId?: string;
+    }): Promise<{
+        nearAccountId: string;
+        enterpriseUserId: string;
+        isNew: boolean;
+    }>;
+    unlinkIdentity(input: {
+        externalIdp: string;
+        externalSub: string;
+        mode?: 'revoke' | 'delete';
+    }): Promise<{
+        ok: boolean;
+    }>;
+    resolveByExternalId(externalIdp: string, externalSub: string): Promise<{
+        nearAccountId: string;
+        status: EnterpriseStatus;
+        enterpriseUserId: string;
+    } | null>;
+    resolveByNearAccount(nearAccountId: string): Promise<{
+        externalIdp: string;
+        externalSub: string;
+        status: EnterpriseStatus;
+    } | null>;
+    setStatus(input: {
+        externalIdp: string;
+        externalSub: string;
+        status: EnterpriseStatus;
+    }): Promise<{
+        ok: boolean;
+    }>;
+    on<K extends keyof EnterpriseEventMap>(event: K, handler: (payload: EnterpriseEventMap[K]) => void): this;
+    emit<K extends keyof EnterpriseEventMap>(event: K, payload: EnterpriseEventMap[K]): boolean;
+}
 /**
  * Optional consumer-facing hooks for extending auth lifecycle behavior.
  *
@@ -390,6 +510,8 @@ interface AnonAuthConfig {
     sessionMetadata?: SessionMetadataConfig;
     /** Database configuration */
     database: DatabaseConfig;
+    /** Optional enterprise identity binding + SCIM module. Absent/disabled preserves anonymous-first behavior. */
+    enterprise?: EnterpriseConfig;
     /** Codename generation style */
     codename?: CodenameConfig;
     /** Recovery options */
@@ -582,6 +704,17 @@ interface DatabaseAdapter {
      *  response body but NOT persisted; the next session start will see the
      *  stale stored value. Custom adapters that don't need persistence may omit this. */
     updatePasskeyBackedUp?(credentialId: string, backedUp: boolean): Promise<void>;
+    initializeEnterprise?(): Promise<void>;
+    createEnterpriseUser?(user: CreateEnterpriseUserInput): Promise<EnterpriseUser>;
+    getEnterpriseUserById?(id: string): Promise<EnterpriseUser | null>;
+    getEnterpriseUserByExternalId?(externalIdp: string, externalSub: string): Promise<EnterpriseUser | null>;
+    getEnterpriseUserByNearAccount?(nearAccountId: string): Promise<EnterpriseUser | null>;
+    getEnterpriseUserByScimId?(scimId: string): Promise<EnterpriseUser | null>;
+    updateEnterpriseUser?(id: string, patch: Partial<Pick<EnterpriseUser, 'externalAttrs' | 'scimId' | 'status'>>): Promise<EnterpriseUser>;
+    setEnterpriseUserStatus?(id: string, status: EnterpriseStatus): Promise<EnterpriseUser>;
+    deleteEnterpriseUser?(id: string): Promise<void>;
+    updateEnterpriseExternalAttrs?(id: string, externalAttrs: Record<string, unknown>): Promise<EnterpriseUser>;
+    deleteSessionsByUserAndTrack?(userId: string, track: SessionTrack): Promise<void>;
 }
 /** Minimal OAuth state record stored in the database to enable cross-instance durability. */
 interface OAuthStateRecord {
@@ -594,7 +727,7 @@ interface OAuthStateRecord {
 /**
  * User type enumeration
  */
-type UserType = 'anonymous' | 'standard';
+type UserType = 'anonymous' | 'standard' | 'enterprise';
 /**
  * Anonymous user (HUMINT sources) - passkey only, no PII
  */
@@ -653,10 +786,11 @@ interface CreateOAuthUserInput {
 /**
  * Union type for any user
  */
-type User = AnonUser | OAuthUser;
+type User = AnonUser | OAuthUser | EnterpriseUser;
 interface Session {
     id: string;
     userId: string;
+    track?: SessionTrack;
     createdAt: Date;
     expiresAt: Date;
     lastActivityAt: Date;
@@ -665,6 +799,7 @@ interface Session {
 }
 interface CreateSessionInput {
     userId: string;
+    track?: SessionTrack;
     expiresAt: Date;
     ipAddress?: string;
     userAgent?: string;
@@ -835,7 +970,11 @@ interface AuthenticationResponseJSON {
 }
 interface AnonAuthRequest {
     anonUser?: AnonUser;
+    oauthUser?: OAuthUser;
+    enterpriseUser?: EnterpriseUser;
     anonSession?: Session;
+    oauthSession?: Session;
+    enterpriseSession?: Session;
 }
 declare global {
     namespace Express {
@@ -844,4 +983,4 @@ declare global {
     }
 }
 
-export type { AuthenticationStartResponse as A, BackfillKeyBundleCtx as B, CsrfConfig as C, DatabaseAdapter as D, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, Session as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, SessionMetadataConfig as f, AuthenticatorTransport as g, Passkey as h, RelatedOrigin as i, RateLimitConfig as j, AnonAuthHooks as k, AnonAuthConfig as l, AfterAuthSuccessCtx as m, AfterAuthSuccessProvider as n, AfterAuthSuccessResult as o, AnalyticsEvent as p, AnonUser as q, BackfillKeyBundleResult as r, BackfillReason as s, OAuthProvider as t, OAuthUser as u, UserType as v, CodenameConfig as w, RecoveryConfig as x, RecoveryData as y, RecoveryType as z };
+export type { AuthenticationStartResponse as A, BackfillKeyBundleCtx as B, CsrfConfig as C, DatabaseAdapter as D, EnterpriseConfig as E, OAuthUser as F, UserType as G, CodenameConfig as H, RecoveryConfig as I, RecoveryData as J, RecoveryType as K, OAuthConfig as O, PublicKeyCredentialRequestOptionsJSON as P, RegistrationStartResponse as R, SessionTrack as S, User as U, RegistrationResponseJSON as a, RegistrationFinishResponse as b, AuthenticationResponseJSON as c, AuthenticationFinishResponse as d, PublicKeyCredentialCreationOptionsJSON as e, Session as f, SessionMetadataConfig as g, AuthenticatorTransport as h, Passkey as i, RelatedOrigin as j, RateLimitConfig as k, AnonAuthHooks as l, EnterpriseBindingApi as m, AnonAuthConfig as n, AfterAuthSuccessCtx as o, AfterAuthSuccessProvider as p, AfterAuthSuccessResult as q, AnalyticsEvent as r, AnonUser as s, BackfillKeyBundleResult as t, BackfillReason as u, CreateEnterpriseUserInput as v, EnterpriseEventMap as w, EnterpriseStatus as x, EnterpriseUser as y, OAuthProvider as z };

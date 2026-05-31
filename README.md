@@ -499,6 +499,87 @@ Important release notes:
   library enforces a maximum of 5 related origins and does not auto-host
   `/.well-known/webauthn`.
 
+## Enterprise Identity Module (v0.8.x)
+
+The enterprise module is opt-in and off by default. If `enterprise` config is
+absent, `createAnonAuth()` exposes no enterprise API, no `scimRouter`, no
+enterprise database initialization, and no enterprise middleware lookup. The
+anonymous passkey track remains the default package behavior.
+
+Enterprise identity binding lets an organization bind an external IdP subject
+from Okta, Entra, PingFederate, Google Workspace, or another IdP to the same
+NEAR DID/MPC account model used elsewhere in the package.
+
+```ts
+import { createAnonAuth } from '@vitalpoint/near-phantom-auth/server';
+
+const auth = createAnonAuth({
+  // existing config unchanged
+  nearNetwork: 'testnet',
+  sessionSecret: process.env.SESSION_SECRET!,
+  database: { type: 'postgres', connectionString: process.env.DATABASE_URL! },
+  enterprise: {
+    enabled: true,
+    binding: { mintMpcIfMissing: true },
+    passkeyStepUp: false,
+    serverManagedDek: true,
+    scim: {
+      enabled: true,
+      bearerToken: process.env.SCIM_BEARER_TOKEN!,
+      attributeMapping: {
+        userName: 'email',
+        'name.formatted': 'displayName',
+      },
+    },
+  },
+});
+
+if (auth.scimRouter) {
+  app.use('/scim/v2', auth.scimRouter);
+}
+```
+
+The binding API is available as `auth.enterprise` only when enterprise is
+enabled:
+
+```ts
+await auth.enterprise?.linkIdentity({
+  externalIdp: 'okta',
+  externalSub: '00u123',
+  externalAttrs: { email: 'employee@example.com' },
+});
+
+await auth.enterprise?.unlinkIdentity({
+  externalIdp: 'okta',
+  externalSub: '00u123',
+  mode: 'revoke',
+});
+
+const binding = await auth.enterprise?.resolveByExternalId('okta', '00u123');
+```
+
+SCIM is protected by the bearer token you configure. The package validates that
+token on every SCIM request; it does not issue or rotate the token. SCIM
+`active:false` and DELETE revoke the enterprise binding and invalidate live
+enterprise sessions.
+
+The package provides mechanism, not product policy. It stores bindings, handles
+SCIM lifecycle, emits enterprise lifecycle events, and reuses NEAR MPC account
+minting. Your application still owns role-to-permission mapping, dashboard
+scopes, audit log format and sink, "disable anonymity in mode X" decisions, and
+government smartcard specifics. Generic OIDC and SAML connectors remain
+promote-later work after real-tenant hardening.
+
+### Enterprise PRF and DEK Modes
+
+Enterprise IdP authentication alone does not produce a WebAuthn PRF sealing key.
+Use `enterprise.passkeyStepUp: true` when enterprise users must register or use
+a passkey after IdP auth so downstream systems can rely on authenticator-rooted
+PRF material. Use `enterprise.serverManagedDek: true` when your deployment
+provisions the user's DEK from a server- or enclave-held key hierarchy instead.
+Pure IdP enterprise auth without passkey step-up does not have the same
+authenticator-rooted DEK property as passkey users.
+
 ## Installation
 
 ```bash
@@ -1052,7 +1133,7 @@ For maximum security, we recommend using a hardware security key instead of plat
 
 ## Privacy and Anonymity Audit
 
-This section documents exactly what the package stores, logs, and exposes for passkey (anonymous) users. The goal: **it must be impossible to link a passkey user to a real-world identity through anything this package does.**
+This section documents exactly what the package stores, logs, and exposes for passkey (anonymous) users. The goal: **it must be impossible to link a passkey user to a real-world identity through anything this package does.** Enterprise identity is a separate opt-in track; it does not change anonymous defaults.
 
 ### What We Store (Passkey Users)
 
@@ -1082,6 +1163,13 @@ This section documents exactly what the package stores, logs, and exposes for pa
 **WebAuthn attestation is set to `'none'`**. The package never requests device attestation, which means the server never learns the manufacturer, model, or firmware version of the user's authenticator. This is intentional - attestation is an identity vector.
 
 **OAuth and passkey tracks are fully separated**. OAuth users (who have email/name) and passkey users (who are anonymous) are stored in separate database tables (`oauth_users` vs `anon_users`) with separate TypeScript types. OAuth identity data never leaks into anonymous user records.
+
+**Enterprise identity is a third opt-in track**. Enterprise users live in
+`enterprise_users`, not `anon_users` or `oauth_users`. External IdP subjects,
+SCIM ids, and chosen `externalAttrs` stay on that enterprise track. The package
+does not join `enterprise_users` into `anon_users`, does not copy enterprise PII
+into anonymous sessions or anonymous route responses, and does not add
+enterprise identifiers to `AnalyticsEvent`.
 
 **Codenames are purely random**. Generated from `crypto.randomBytes()` selecting from word lists. Not derived from user ID, device, IP, or any other input. Two users on the same device get unrelated codenames.
 
@@ -1130,6 +1218,7 @@ With full database access under the default `store` policy, an attacker would se
 | Log exfiltration reveals identity | Yes | Logging silent by default; no PII in passkey log calls |
 | Device fingerprinting via WebAuthn | Yes | Attestation set to `'none'` |
 | Cross-track deanonymization (OAuth -> passkey) | Yes | Separate DB tables and type system |
+| Cross-track deanonymization (enterprise -> passkey) | Yes | `enterprise_users` is opt-in and separate from `anon_users`; no enterprise identifiers in anonymous analytics or route responses |
 | NEAR account -> real identity | Yes | Derived from random UUID; unpredictable with `derivationSalt` |
 | Recovery backup contents leaked | Yes | AES-256-GCM encrypted with user password |
 | Rate limiter IP persistence | Yes | In-memory only, never written to disk |

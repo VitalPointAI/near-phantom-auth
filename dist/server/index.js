@@ -1,5 +1,5 @@
 import pino3 from 'pino';
-import { scrypt, createHash, randomBytes, randomUUID, createHmac, timingSafeEqual, createDecipheriv, createCipheriv } from 'crypto';
+import { scrypt, createHash, randomUUID, randomBytes, timingSafeEqual, createHmac, createDecipheriv, createCipheriv } from 'crypto';
 import { isIP } from 'net';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import bs582 from 'bs58';
@@ -15,6 +15,7 @@ import { rateLimit } from 'express-rate-limit';
 import { doubleCsrf } from 'csrf-csrf';
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
+import { EventEmitter } from 'events';
 
 // src/server/index.ts
 
@@ -122,6 +123,23 @@ CREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);
 CREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);
 CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);
 `;
+var POSTGRES_ENTERPRISE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS enterprise_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  near_account_id TEXT NOT NULL,
+  external_idp TEXT NOT NULL,
+  external_sub TEXT NOT NULL,
+  external_attrs JSONB,
+  scim_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (external_idp, external_sub)
+);
+
+CREATE INDEX IF NOT EXISTS idx_enterprise_near ON enterprise_users (near_account_id);
+CREATE INDEX IF NOT EXISTS idx_enterprise_scim ON enterprise_users (scim_id);
+`;
 function mapOAuthUserRows(rows) {
   if (rows.length === 0 || !rows[0].id) return null;
   const first = rows[0];
@@ -150,6 +168,21 @@ function mapOAuthUserRows(rows) {
     providers,
     createdAt: first.created_at,
     lastActiveAt: first.last_active_at
+  };
+}
+function mapEnterpriseUserRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: "enterprise",
+    nearAccountId: row.near_account_id,
+    externalIdp: row.external_idp,
+    externalSub: row.external_sub,
+    externalAttrs: row.external_attrs ?? void 0,
+    scimId: row.scim_id ?? void 0,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 function createPostgresAdapter(config) {
@@ -242,15 +275,16 @@ function createPostgresAdapter(config) {
       },
       async createSession(input) {
         const result = await client.query(
-          `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
-           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
-           RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
-          [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+          `INSERT INTO anon_sessions (id, user_id, user_type, expires_at, ip_address, user_agent)
+           VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+           RETURNING id, user_id, user_type, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+          [input.id || null, input.userId, input.track || "anonymous", input.expiresAt, input.ipAddress || null, input.userAgent || null]
         );
         const row = result.rows[0];
         return {
           id: row.id,
           userId: row.user_id,
+          track: row.user_type || "anonymous",
           createdAt: row.created_at,
           expiresAt: row.expires_at,
           lastActivityAt: row.last_activity_at,
@@ -568,15 +602,16 @@ function createPostgresAdapter(config) {
     async createSession(input) {
       const p = await getPool();
       const result = await p.query(
-        `INSERT INTO anon_sessions (id, user_id, expires_at, ip_address, user_agent)
-         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
-         RETURNING id, user_id, created_at, expires_at, last_activity_at, ip_address, user_agent`,
-        [input.id || null, input.userId, input.expiresAt, input.ipAddress || null, input.userAgent || null]
+        `INSERT INTO anon_sessions (id, user_id, user_type, expires_at, ip_address, user_agent)
+         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+         RETURNING id, user_id, user_type, created_at, expires_at, last_activity_at, ip_address, user_agent`,
+        [input.id || null, input.userId, input.track || "anonymous", input.expiresAt, input.ipAddress || null, input.userAgent || null]
       );
       const row = result.rows[0];
       return {
         id: row.id,
         userId: row.user_id,
+        track: row.user_type || "anonymous",
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         lastActivityAt: row.last_activity_at,
@@ -595,6 +630,7 @@ function createPostgresAdapter(config) {
       return {
         id: row.id,
         userId: row.user_id,
+        track: row.user_type || "anonymous",
         createdAt: row.created_at,
         expiresAt: row.expires_at,
         lastActivityAt: row.last_activity_at,
@@ -621,6 +657,10 @@ function createPostgresAdapter(config) {
         "UPDATE anon_sessions SET expires_at = $1 WHERE id = $2",
         [newExpiresAt, sessionId]
       );
+    },
+    async deleteSessionsByUserAndTrack(userId, track) {
+      const p = await getPool();
+      await p.query("DELETE FROM anon_sessions WHERE user_id = $1 AND user_type = $2", [userId, track]);
     },
     async storeChallenge(challenge) {
       const p = await getPool();
@@ -681,6 +721,89 @@ function createPostgresAdapter(config) {
         reference: row.reference,
         createdAt: row.created_at
       };
+    },
+    async initializeEnterprise() {
+      const p = await getPool();
+      await p.query(POSTGRES_ENTERPRISE_SCHEMA);
+    },
+    async createEnterpriseUser(input) {
+      const p = await getPool();
+      const result = await p.query(
+        `INSERT INTO enterprise_users (near_account_id, external_idp, external_sub, external_attrs, scim_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          input.nearAccountId,
+          input.externalIdp,
+          input.externalSub,
+          input.externalAttrs ? JSON.stringify(input.externalAttrs) : null,
+          input.scimId || null,
+          input.status || "active"
+        ]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async getEnterpriseUserById(id) {
+      const p = await getPool();
+      const result = await p.query("SELECT * FROM enterprise_users WHERE id = $1", [id]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async getEnterpriseUserByExternalId(externalIdp, externalSub) {
+      const p = await getPool();
+      const result = await p.query(
+        "SELECT * FROM enterprise_users WHERE external_idp = $1 AND external_sub = $2",
+        [externalIdp, externalSub]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async getEnterpriseUserByNearAccount(nearAccountId) {
+      const p = await getPool();
+      const result = await p.query("SELECT * FROM enterprise_users WHERE near_account_id = $1", [nearAccountId]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async getEnterpriseUserByScimId(scimId) {
+      const p = await getPool();
+      const result = await p.query("SELECT * FROM enterprise_users WHERE scim_id = $1", [scimId]);
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async updateEnterpriseUser(id, patch) {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users
+         SET external_attrs = COALESCE($2, external_attrs),
+             scim_id = COALESCE($3, scim_id),
+             status = COALESCE($4, status),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [
+          id,
+          patch.externalAttrs === void 0 ? null : JSON.stringify(patch.externalAttrs),
+          patch.scimId ?? null,
+          patch.status ?? null
+        ]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async setEnterpriseUserStatus(id, status) {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id, status]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
+    },
+    async deleteEnterpriseUser(id) {
+      const p = await getPool();
+      await p.query("DELETE FROM enterprise_users WHERE id = $1", [id]);
+    },
+    async updateEnterpriseExternalAttrs(id, externalAttrs) {
+      const p = await getPool();
+      const result = await p.query(
+        `UPDATE enterprise_users SET external_attrs = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id, JSON.stringify(externalAttrs)]
+      );
+      return mapEnterpriseUserRow(result.rows[0]);
     },
     async transaction(fn) {
       const p = await getPool();
@@ -856,6 +979,7 @@ function createSessionManager(db, config) {
       });
       const sessionInput = {
         userId,
+        track: options.track ?? "anonymous",
         expiresAt,
         ipAddress: metadata.ipAddress,
         userAgent: metadata.userAgent
@@ -2446,6 +2570,7 @@ function createOAuthRouter(config) {
           return res.status(sf2.status).json({ ...sf2.body, secondFactor: sf2 });
         }
         await sessionManager.createSession(user.id, res, {
+          track: "oauth",
           ipAddress: req.ip,
           userAgent: req.headers["user-agent"]
         });
@@ -2487,6 +2612,7 @@ function createOAuthRouter(config) {
             return res.status(sf2.status).json({ ...sf2.body, secondFactor: sf2 });
           }
           await sessionManager.createSession(user.id, res, {
+            track: "oauth",
             ipAddress: req.ip,
             userAgent: req.headers["user-agent"]
           });
@@ -2569,6 +2695,7 @@ function createOAuthRouter(config) {
         return res.status(sf.status).json({ ...sf.body, secondFactor: sf });
       }
       await sessionManager.createSession(newUser.id, res, {
+        track: "oauth",
         ipAddress: req.ip,
         userAgent: req.headers["user-agent"]
       });
@@ -2633,11 +2760,30 @@ function createAuthMiddleware(sessionManager, db, logger) {
     try {
       const session = await sessionManager.getSession(req);
       if (session) {
-        const user = await db.getUserById(session.userId);
-        if (user) {
-          req.anonUser = user;
-          req.anonSession = session;
-          await sessionManager.refreshSession(req, res);
+        const track = session.track ?? "anonymous";
+        if (track === "enterprise") {
+          const user = await db.getEnterpriseUserById?.(session.userId);
+          if (user?.status === "active") {
+            req.enterpriseUser = user;
+            req.enterpriseSession = session;
+            await sessionManager.refreshSession(req, res);
+          } else {
+            await db.deleteSession(session.id);
+          }
+        } else if (track === "oauth") {
+          const user = await db.getOAuthUserById(session.userId);
+          if (user) {
+            req.oauthUser = user;
+            req.oauthSession = session;
+            await sessionManager.refreshSession(req, res);
+          }
+        } else {
+          const user = await db.getUserById(session.userId);
+          if (user) {
+            req.anonUser = user;
+            req.anonSession = session;
+            await sessionManager.refreshSession(req, res);
+          }
         }
       }
       next();
@@ -2655,12 +2801,30 @@ function createRequireAuth(sessionManager, db, logger) {
       if (!session) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      const user = await db.getUserById(session.userId);
-      if (!user) {
-        return res.status(401).json({ error: "User not found" });
+      const track = session.track ?? "anonymous";
+      if (track === "enterprise") {
+        const user = await db.getEnterpriseUserById?.(session.userId);
+        if (!user || user.status !== "active") {
+          await db.deleteSession(session.id);
+          return res.status(401).json({ error: "Enterprise identity inactive" });
+        }
+        req.enterpriseUser = user;
+        req.enterpriseSession = session;
+      } else if (track === "oauth") {
+        const user = await db.getOAuthUserById(session.userId);
+        if (!user) {
+          return res.status(401).json({ error: "User not found" });
+        }
+        req.oauthUser = user;
+        req.oauthSession = session;
+      } else {
+        const user = await db.getUserById(session.userId);
+        if (!user) {
+          return res.status(401).json({ error: "User not found" });
+        }
+        req.anonUser = user;
+        req.anonSession = session;
       }
-      req.anonUser = user;
-      req.anonSession = session;
       await sessionManager.refreshSession(req, res);
       next();
     } catch (error) {
@@ -3342,6 +3506,446 @@ function createRouter(config) {
   return router;
 }
 
+// src/server/enterprise/errors.ts
+var BindingError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = new.target.name;
+  }
+};
+var EnterpriseAdapterError = class extends BindingError {
+};
+var EnterpriseIdentityNotFoundError = class extends BindingError {
+};
+
+// src/server/enterprise/index.ts
+function requireMethod(db, method) {
+  const fn = db[method];
+  if (!fn) {
+    throw new EnterpriseAdapterError(`Enterprise module requires DatabaseAdapter.${method}()`);
+  }
+  return fn;
+}
+async function deleteEnterpriseSessions(db, user) {
+  if (db.deleteSessionsByUserAndTrack) {
+    await db.deleteSessionsByUserAndTrack(user.id, "enterprise");
+    return;
+  }
+  await db.deleteUserSessions(user.id);
+}
+function createEnterpriseBinding(config) {
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "enterprise" });
+  const emitter = new EventEmitter();
+  const { db, mpcManager, enterpriseConfig } = config;
+  const api = {
+    async linkIdentity(input) {
+      const getByExternal = requireMethod(db, "getEnterpriseUserByExternalId");
+      const existing = await getByExternal.call(db, input.externalIdp, input.externalSub);
+      if (existing) {
+        return {
+          nearAccountId: existing.nearAccountId,
+          enterpriseUserId: existing.id,
+          isNew: false
+        };
+      }
+      let nearAccountId = input.nearAccountId;
+      if (!nearAccountId) {
+        if (enterpriseConfig.binding?.mintMpcIfMissing === false) {
+          throw new EnterpriseAdapterError("nearAccountId is required when enterprise.binding.mintMpcIfMissing is false");
+        }
+        const mpcAccount = await mpcManager.createAccount(randomUUID());
+        nearAccountId = mpcAccount.nearAccountId;
+      }
+      const createUser = requireMethod(db, "createEnterpriseUser");
+      const user = await createUser.call(db, {
+        nearAccountId,
+        externalIdp: input.externalIdp,
+        externalSub: input.externalSub,
+        externalAttrs: input.externalAttrs,
+        scimId: input.scimId,
+        status: "active"
+      });
+      const payload = {
+        externalIdp: user.externalIdp,
+        externalSub: user.externalSub,
+        nearAccountId: user.nearAccountId,
+        enterpriseUserId: user.id,
+        ts: Date.now()
+      };
+      emitter.emit("identity.linked", payload);
+      log2.debug({ externalIdp: user.externalIdp }, "enterprise identity linked");
+      return { nearAccountId: user.nearAccountId, enterpriseUserId: user.id, isNew: true };
+    },
+    async unlinkIdentity(input) {
+      const getByExternal = requireMethod(db, "getEnterpriseUserByExternalId");
+      const user = await getByExternal.call(db, input.externalIdp, input.externalSub);
+      if (!user) throw new EnterpriseIdentityNotFoundError("Enterprise identity not found");
+      const mode = input.mode ?? "revoke";
+      if (mode === "delete") {
+        const deleteUser = requireMethod(db, "deleteEnterpriseUser");
+        await deleteEnterpriseSessions(db, user);
+        await deleteUser.call(db, user.id);
+      } else {
+        await api.setStatus({
+          externalIdp: input.externalIdp,
+          externalSub: input.externalSub,
+          status: "deprovisioned"
+        });
+      }
+      emitter.emit("identity.unlinked", {
+        externalIdp: input.externalIdp,
+        externalSub: input.externalSub,
+        nearAccountId: user.nearAccountId,
+        mode,
+        ts: Date.now()
+      });
+      return { ok: true };
+    },
+    async resolveByExternalId(externalIdp, externalSub) {
+      const getByExternal = requireMethod(db, "getEnterpriseUserByExternalId");
+      const user = await getByExternal.call(db, externalIdp, externalSub);
+      if (!user) return null;
+      return { nearAccountId: user.nearAccountId, status: user.status, enterpriseUserId: user.id };
+    },
+    async resolveByNearAccount(nearAccountId) {
+      const getByNear = requireMethod(db, "getEnterpriseUserByNearAccount");
+      const user = await getByNear.call(db, nearAccountId);
+      if (!user) return null;
+      return { externalIdp: user.externalIdp, externalSub: user.externalSub, status: user.status };
+    },
+    async setStatus(input) {
+      const getByExternal = requireMethod(db, "getEnterpriseUserByExternalId");
+      const user = await getByExternal.call(db, input.externalIdp, input.externalSub);
+      if (!user) throw new EnterpriseIdentityNotFoundError("Enterprise identity not found");
+      const setStatus = requireMethod(db, "setEnterpriseUserStatus");
+      const updated = await setStatus.call(db, user.id, input.status);
+      if (input.status === "suspended" || input.status === "deprovisioned") {
+        await deleteEnterpriseSessions(db, user);
+      }
+      emitter.emit("identity.status", {
+        externalIdp: user.externalIdp,
+        externalSub: user.externalSub,
+        nearAccountId: user.nearAccountId,
+        from: user.status,
+        to: updated.status,
+        ts: Date.now()
+      });
+      return { ok: true };
+    },
+    on(event, handler) {
+      emitter.on(event, handler);
+      return api;
+    },
+    emit(event, payload) {
+      return emitter.emit(event, payload);
+    }
+  };
+  return api;
+}
+var scimUserSchema = z.object({
+  userName: z.string().min(1),
+  externalId: z.string().min(1).optional(),
+  active: z.boolean().optional(),
+  name: z.record(z.string(), z.unknown()).optional(),
+  emails: z.array(z.record(z.string(), z.unknown())).optional(),
+  groups: z.array(z.union([
+    z.string(),
+    z.object({ value: z.string().optional(), display: z.string().optional() }).passthrough()
+  ])).optional()
+}).passthrough();
+var scimPatchSchema = z.object({
+  Operations: z.array(z.object({
+    op: z.string().min(1),
+    path: z.string().optional(),
+    value: z.unknown().optional()
+  }).passthrough())
+}).passthrough();
+var scimGroupSchema = z.object({
+  displayName: z.string().min(1),
+  externalId: z.string().optional(),
+  members: z.array(z.object({
+    value: z.string().optional(),
+    display: z.string().optional()
+  }).passthrough()).optional()
+}).passthrough();
+function tokenMatches(actual, expected) {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
+function scimError(res, status, detail, scimType) {
+  return res.status(status).json({
+    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
+    status: String(status),
+    detail,
+    ...scimType && { scimType }
+  });
+}
+function extractExternalSub(body) {
+  return body.externalId || body.userName || "";
+}
+function getPathValue(source, path) {
+  return path.split(".").reduce((value, key) => {
+    if (!value || typeof value !== "object") return void 0;
+    return value[key];
+  }, source);
+}
+function normalizeGroups(groups) {
+  if (!Array.isArray(groups)) return void 0;
+  return groups.map((group) => {
+    if (typeof group === "string") return group;
+    if (group && typeof group === "object") {
+      const record = group;
+      return record.display || record.value || record;
+    }
+    return group;
+  });
+}
+function mapExternalAttrs(body, attributeMapping = {}) {
+  const attrs = {};
+  for (const [scimPath, attrKey] of Object.entries(attributeMapping)) {
+    const value = getPathValue(body, scimPath);
+    if (value !== void 0) attrs[attrKey] = value;
+  }
+  const groups = normalizeGroups(body.groups);
+  if (groups) attrs.groups = groups;
+  return attrs;
+}
+function toScimUser(user) {
+  const attrs = user.externalAttrs ?? {};
+  const userName = typeof attrs.email === "string" ? attrs.email : user.externalSub;
+  return {
+    schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+    id: user.scimId || user.id,
+    userName,
+    externalId: user.externalSub,
+    active: user.status === "active",
+    name: attrs.displayName ? { formatted: attrs.displayName } : void 0,
+    groups: attrs.groups,
+    meta: {
+      resourceType: "User",
+      created: user.createdAt.toISOString(),
+      lastModified: user.updatedAt.toISOString()
+    }
+  };
+}
+function toScimGroup(group) {
+  return {
+    schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+    id: group.id,
+    displayName: group.displayName,
+    members: group.members,
+    meta: { resourceType: "Group" }
+  };
+}
+async function getByScimOrId(db, id) {
+  return await db.getEnterpriseUserByScimId?.(id) || await db.getEnterpriseUserById?.(id) || null;
+}
+function createScimRouter(config) {
+  const router = Router();
+  const log2 = (config.logger ?? pino3({ level: "silent" })).child({ module: "scim" });
+  const scimConfig = config.enterpriseConfig.scim;
+  if (!scimConfig?.bearerToken) {
+    throw new Error("Enterprise SCIM requires enterprise.scim.bearerToken");
+  }
+  const externalIdp = scimConfig.externalIdp ?? "scim";
+  const groups = /* @__PURE__ */ new Map();
+  const authRateConfig = config.rateLimiting?.auth ?? {};
+  router.use(rateLimit({
+    windowMs: authRateConfig.windowMs ?? 15 * 60 * 1e3,
+    limit: authRateConfig.limit ?? 20,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (_req, res, _next, options) => {
+      log2.warn({ limit: options.limit }, "SCIM rate limit exceeded");
+      scimError(res, 429, "Too many SCIM requests");
+    }
+  }));
+  router.use(json());
+  router.use((req, res, next) => {
+    const header = req.headers.authorization;
+    const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    if (!token || !tokenMatches(token, scimConfig.bearerToken)) {
+      return scimError(res, 401, "Invalid bearer token");
+    }
+    next();
+  });
+  router.get("/ServiceProviderConfig", (_req, res) => {
+    res.json({
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
+      patch: { supported: true },
+      bulk: { supported: false },
+      filter: { supported: true, maxResults: 100 },
+      changePassword: { supported: false },
+      sort: { supported: false },
+      etag: { supported: false },
+      authenticationSchemes: [{
+        type: "oauthbearertoken",
+        name: "Bearer Token",
+        description: "SCIM bearer token configured by the consuming application.",
+        primary: true
+      }]
+    });
+  });
+  router.post("/Users", async (req, res) => {
+    const parsed = scimUserSchema.safeParse(req.body);
+    if (!parsed.success) return scimError(res, 400, "Invalid SCIM User payload", "invalidValue");
+    const body = parsed.data;
+    const externalSub = extractExternalSub(body);
+    const linked = await config.enterprise.linkIdentity({
+      externalIdp,
+      externalSub,
+      externalAttrs: mapExternalAttrs(body, scimConfig.attributeMapping),
+      scimId: externalSub
+    });
+    const user = await config.db.getEnterpriseUserById?.(linked.enterpriseUserId);
+    if (!user) return scimError(res, 500, "Provisioned enterprise user could not be loaded");
+    config.enterprise.emit("scim.provisioned", {
+      externalIdp,
+      externalSub,
+      nearAccountId: user.nearAccountId,
+      enterpriseUserId: user.id,
+      ts: Date.now()
+    });
+    res.status(linked.isNew ? 201 : 200).json(toScimUser(user));
+  });
+  router.get("/Users", async (req, res) => {
+    const filter = String(req.query.filter || "");
+    const match = filter.match(/^(userName|externalId)\s+eq\s+"([^"]+)"$/);
+    if (!match) return scimError(res, 400, "Unsupported SCIM filter", "invalidFilter");
+    const externalSub = match[2];
+    const user = await config.db.getEnterpriseUserByExternalId?.(externalIdp, externalSub);
+    const resources = user ? [toScimUser(user)] : [];
+    res.json({
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      totalResults: resources.length,
+      Resources: resources,
+      startIndex: 1,
+      itemsPerPage: resources.length
+    });
+  });
+  router.get("/Users/:id", async (req, res) => {
+    const user = await getByScimOrId(config.db, req.params.id);
+    if (!user) return scimError(res, 404, "SCIM User not found");
+    res.json(toScimUser(user));
+  });
+  router.patch("/Users/:id", async (req, res) => {
+    const parsed = scimPatchSchema.safeParse(req.body);
+    if (!parsed.success) return scimError(res, 400, "Invalid SCIM PATCH payload", "invalidValue");
+    let user = await getByScimOrId(config.db, req.params.id);
+    if (!user) return scimError(res, 404, "SCIM User not found");
+    let attrs = { ...user.externalAttrs ?? {} };
+    for (const operation of parsed.data.Operations) {
+      if (operation.op.toLowerCase() !== "replace") return scimError(res, 400, "Unsupported SCIM PATCH operation", "mutability");
+      const path = operation.path;
+      if (path === "active") {
+        const active = operation.value === true;
+        await config.enterprise.setStatus({
+          externalIdp: user.externalIdp,
+          externalSub: user.externalSub,
+          status: active ? "active" : "deprovisioned"
+        });
+        user = await config.db.getEnterpriseUserById?.(user.id) ?? user;
+      } else if (path === "groups") {
+        attrs.groups = normalizeGroups(operation.value);
+      } else if (path === "userName") {
+        attrs.email = operation.value;
+      } else if (path === "name") {
+        attrs.displayName = operation.value?.formatted ?? operation.value;
+      } else {
+        return scimError(res, 400, "Unsupported SCIM PATCH path", "noTarget");
+      }
+    }
+    if (config.db.updateEnterpriseExternalAttrs) {
+      user = await config.db.updateEnterpriseExternalAttrs(user.id, attrs);
+    }
+    res.json(toScimUser(user));
+  });
+  router.put("/Users/:id", async (req, res) => {
+    const parsed = scimUserSchema.safeParse(req.body);
+    if (!parsed.success) return scimError(res, 400, "Invalid SCIM User payload", "invalidValue");
+    let user = await getByScimOrId(config.db, req.params.id);
+    if (!user) return scimError(res, 404, "SCIM User not found");
+    const status = parsed.data.active === false ? "deprovisioned" : "active";
+    await config.enterprise.setStatus({ externalIdp: user.externalIdp, externalSub: user.externalSub, status });
+    if (config.db.updateEnterpriseUser) {
+      user = await config.db.updateEnterpriseUser(user.id, {
+        status,
+        externalAttrs: mapExternalAttrs(parsed.data, scimConfig.attributeMapping)
+      });
+    }
+    res.json(toScimUser(user));
+  });
+  router.delete("/Users/:id", async (req, res) => {
+    const user = await getByScimOrId(config.db, req.params.id);
+    if (!user) return scimError(res, 404, "SCIM User not found");
+    await config.enterprise.unlinkIdentity({
+      externalIdp: user.externalIdp,
+      externalSub: user.externalSub,
+      mode: "revoke"
+    });
+    config.enterprise.emit("scim.deprovisioned", {
+      externalIdp: user.externalIdp,
+      externalSub: user.externalSub,
+      nearAccountId: user.nearAccountId,
+      enterpriseUserId: user.id,
+      ts: Date.now()
+    });
+    res.status(204).send();
+  });
+  router.get("/Groups", (_req, res) => {
+    const resources = Array.from(groups.values()).map(toScimGroup);
+    res.json({
+      schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      totalResults: resources.length,
+      Resources: resources,
+      startIndex: 1,
+      itemsPerPage: resources.length
+    });
+  });
+  router.post("/Groups", (req, res) => {
+    const parsed = scimGroupSchema.safeParse(req.body);
+    if (!parsed.success) return scimError(res, 400, "Invalid SCIM Group payload", "invalidValue");
+    const id = parsed.data.externalId || randomUUID();
+    const group = {
+      id,
+      displayName: parsed.data.displayName,
+      members: parsed.data.members ?? []
+    };
+    groups.set(id, group);
+    res.status(201).json(toScimGroup(group));
+  });
+  router.get("/Groups/:id", (req, res) => {
+    const group = groups.get(req.params.id);
+    if (!group) return scimError(res, 404, "SCIM Group not found");
+    res.json(toScimGroup(group));
+  });
+  router.patch("/Groups/:id", async (req, res) => {
+    const group = groups.get(req.params.id);
+    if (!group) return scimError(res, 404, "SCIM Group not found");
+    const parsed = scimPatchSchema.safeParse(req.body);
+    if (!parsed.success) return scimError(res, 400, "Invalid SCIM PATCH payload", "invalidValue");
+    for (const operation of parsed.data.Operations) {
+      if (operation.op.toLowerCase() !== "replace" || operation.path !== "members") {
+        return scimError(res, 400, "Unsupported SCIM Group PATCH operation", "mutability");
+      }
+      group.members = Array.isArray(operation.value) ? operation.value : [];
+      for (const member of group.members) {
+        const id = typeof member.value === "string" ? member.value : void 0;
+        const user = id ? await getByScimOrId(config.db, id) : null;
+        if (user && config.db.updateEnterpriseExternalAttrs) {
+          const attrs = { ...user.externalAttrs ?? {} };
+          attrs.groups = [group.displayName];
+          await config.db.updateEnterpriseExternalAttrs(user.id, attrs);
+        }
+      }
+    }
+    res.json(toScimGroup(group));
+  });
+  return router;
+}
+
 // src/server/cleanup.ts
 function createCleanupScheduler(db, log2, intervalMs = 5 * 60 * 1e3) {
   const handle = setInterval(async () => {
@@ -3571,6 +4175,20 @@ function createAnonAuth(config) {
   }
   let oauthManager;
   let oauthRouter;
+  const enterpriseEnabled = config.enterprise?.enabled === true;
+  const enterprise = enterpriseEnabled ? createEnterpriseBinding({
+    db,
+    mpcManager,
+    enterpriseConfig: config.enterprise,
+    logger
+  }) : void 0;
+  const scimRouter = enterpriseEnabled && config.enterprise?.scim?.enabled && enterprise ? createScimRouter({
+    db,
+    enterprise,
+    enterpriseConfig: config.enterprise,
+    rateLimiting: config.rateLimiting,
+    logger
+  }) : void 0;
   if (config.oauth) {
     oauthManager = createOAuthManager(
       {
@@ -3622,10 +4240,18 @@ function createAnonAuth(config) {
   return {
     router,
     oauthRouter,
+    scimRouter,
+    enterprise,
     middleware,
     requireAuth,
     async initialize() {
       await db.initialize();
+      if (enterpriseEnabled) {
+        if (!db.initializeEnterprise) {
+          throw new Error("Enterprise module requires DatabaseAdapter.initializeEnterprise()");
+        }
+        await db.initializeEnterprise();
+      }
     },
     db,
     sessionManager,
@@ -3637,6 +4263,6 @@ function createAnonAuth(config) {
   };
 }
 
-export { MPCAccountManager, POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration };
+export { MPCAccountManager, POSTGRES_ENTERPRISE_SCHEMA, POSTGRES_SCHEMA, base64urlToUint8Array, createAnonAuth, createAuthenticationOptions, createCleanupScheduler, createEmailService, createEnterpriseBinding, createOAuthManager, createOAuthRouter, createPostgresAdapter, createRegistrationOptions, createScimRouter, generateCodename, isValidCodename, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

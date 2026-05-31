@@ -1,6 +1,6 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as Session, f as SessionMetadataConfig, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, g as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, h as Passkey, i as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, j as RateLimitConfig, C as CsrfConfig, k as AnonAuthHooks, l as AnonAuthConfig } from '../index-DPBetoV8.cjs';
-export { m as AfterAuthSuccessCtx, n as AfterAuthSuccessProvider, o as AfterAuthSuccessResult, p as AnalyticsEvent, q as AnonUser, B as BackfillKeyBundleCtx, r as BackfillKeyBundleResult, s as BackfillReason, t as OAuthProvider, u as OAuthUser, U as User, v as UserType } from '../index-DPBetoV8.cjs';
+import { S as SessionTrack, f as Session, g as SessionMetadataConfig, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, h as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, i as Passkey, j as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, k as RateLimitConfig, C as CsrfConfig, l as AnonAuthHooks, E as EnterpriseConfig, m as EnterpriseBindingApi, n as AnonAuthConfig } from '../index-DtCH3Eu-.cjs';
+export { o as AfterAuthSuccessCtx, p as AfterAuthSuccessProvider, q as AfterAuthSuccessResult, r as AnalyticsEvent, s as AnonUser, B as BackfillKeyBundleCtx, t as BackfillKeyBundleResult, u as BackfillReason, v as CreateEnterpriseUserInput, w as EnterpriseEventMap, x as EnterpriseStatus, y as EnterpriseUser, z as OAuthProvider, F as OAuthUser, U as User, G as UserType } from '../index-DtCH3Eu-.cjs';
 import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.cjs';
 
@@ -35,6 +35,7 @@ interface SessionManager {
     createSession(userId: string, res: Response, options?: {
         ipAddress?: string;
         userAgent?: string;
+        track?: SessionTrack;
     }): Promise<Session>;
     getSession(req: Request): Promise<Session | null>;
     destroySession(req: Request, res: Response): Promise<void>;
@@ -436,6 +437,11 @@ interface PostgresConfig {
  */
 declare const POSTGRES_SCHEMA = "\n-- Anonymous users (HUMINT sources - passkey only)\nCREATE TABLE IF NOT EXISTS anon_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  codename TEXT UNIQUE NOT NULL,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth users (standard users - OAuth providers)\nCREATE TABLE IF NOT EXISTS oauth_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT UNIQUE NOT NULL,\n  name TEXT,\n  avatar_url TEXT,\n  near_account_id TEXT UNIQUE NOT NULL,\n  mpc_public_key TEXT NOT NULL,\n  derivation_path TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  last_active_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- OAuth provider connections\nCREATE TABLE IF NOT EXISTS oauth_providers (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL REFERENCES oauth_users(id) ON DELETE CASCADE,\n  provider TEXT NOT NULL,\n  provider_id TEXT NOT NULL,\n  email TEXT,\n  name TEXT,\n  avatar_url TEXT,\n  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(provider, provider_id)\n);\n\n-- Passkeys (WebAuthn credentials) - for anonymous users\nCREATE TABLE IF NOT EXISTS anon_passkeys (\n  credential_id TEXT PRIMARY KEY,\n  user_id UUID NOT NULL REFERENCES anon_users(id) ON DELETE CASCADE,\n  public_key BYTEA NOT NULL,\n  counter BIGINT NOT NULL DEFAULT 0,\n  device_type TEXT NOT NULL,\n  backed_up BOOLEAN NOT NULL DEFAULT false,\n  transports TEXT[],\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Sessions (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_sessions (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  expires_at TIMESTAMPTZ NOT NULL,\n  last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  ip_address TEXT,\n  user_agent TEXT\n);\n\n-- WebAuthn challenges (temporary)\nCREATE TABLE IF NOT EXISTS anon_challenges (\n  id UUID PRIMARY KEY,\n  challenge TEXT NOT NULL,\n  type TEXT NOT NULL,\n  user_id UUID,\n  expires_at TIMESTAMPTZ NOT NULL,\n  metadata JSONB\n);\n\n-- Recovery data references (works for both user types)\nCREATE TABLE IF NOT EXISTS anon_recovery (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  user_id UUID NOT NULL,\n  user_type TEXT NOT NULL DEFAULT 'anonymous',\n  type TEXT NOT NULL,\n  reference TEXT NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE(user_id, type)\n);\n\n-- OAuth state (cross-instance durability for OAuth login flows)\nCREATE TABLE IF NOT EXISTS oauth_state (\n  state TEXT PRIMARY KEY,\n  provider TEXT NOT NULL,\n  code_verifier TEXT,\n  redirect_uri TEXT NOT NULL,\n  expires_at TIMESTAMPTZ NOT NULL,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Indexes\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_user ON anon_sessions(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_sessions_expires ON anon_sessions(expires_at);\nCREATE INDEX IF NOT EXISTS idx_anon_passkeys_user ON anon_passkeys(user_id);\nCREATE INDEX IF NOT EXISTS idx_anon_challenges_expires ON anon_challenges(expires_at);\nCREATE INDEX IF NOT EXISTS idx_oauth_users_email ON oauth_users(email);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_user ON oauth_providers(user_id);\nCREATE INDEX IF NOT EXISTS idx_oauth_providers_lookup ON oauth_providers(provider, provider_id);\nCREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at);\n";
 /**
+ * Optional enterprise identity schema. This is intentionally separate from
+ * POSTGRES_SCHEMA so default installs do not create enterprise tables.
+ */
+declare const POSTGRES_ENTERPRISE_SCHEMA = "\nCREATE TABLE IF NOT EXISTS enterprise_users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  near_account_id TEXT NOT NULL,\n  external_idp TEXT NOT NULL,\n  external_sub TEXT NOT NULL,\n  external_attrs JSONB,\n  scim_id TEXT,\n  status TEXT NOT NULL DEFAULT 'active',\n  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  UNIQUE (external_idp, external_sub)\n);\n\nCREATE INDEX IF NOT EXISTS idx_enterprise_near ON enterprise_users (near_account_id);\nCREATE INDEX IF NOT EXISTS idx_enterprise_scim ON enterprise_users (scim_id);\n";
+/**
  * Create PostgreSQL adapter
  *
  * Note: Requires 'pg' package to be installed by the consuming application
@@ -475,6 +481,23 @@ interface OAuthRouterConfig {
 }
 declare function createOAuthRouter(config: OAuthRouterConfig): Router;
 
+interface EnterpriseBindingConfig {
+    db: DatabaseAdapter;
+    mpcManager: MPCAccountManager;
+    enterpriseConfig: EnterpriseConfig;
+    logger?: Logger;
+}
+declare function createEnterpriseBinding(config: EnterpriseBindingConfig): EnterpriseBindingApi;
+
+interface ScimRouterConfig {
+    db: DatabaseAdapter;
+    enterprise: EnterpriseBindingApi;
+    enterpriseConfig: EnterpriseConfig;
+    rateLimiting?: RateLimitConfig;
+    logger?: Logger;
+}
+declare function createScimRouter(config: ScimRouterConfig): Router;
+
 /**
  * Server SDK Entry Point
  *
@@ -513,6 +536,10 @@ interface AnonAuthInstance {
     router: Router;
     /** OAuth router for OAuth providers */
     oauthRouter?: Router;
+    /** SCIM router for enterprise provisioning */
+    scimRouter?: Router;
+    /** Enterprise binding API */
+    enterprise?: EnterpriseBindingApi;
     /** Middleware that attaches user to request if authenticated */
     middleware: RequestHandler;
     /** Middleware that requires authentication (401 if not) */
@@ -539,4 +566,4 @@ interface AnonAuthInstance {
  */
 declare function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance;
 
-export { AnonAuthConfig, AnonAuthHooks, type AnonAuthInstance, type CleanupScheduler, type CreateAccountResult, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCAccountManagerConfig, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, RelatedOrigin, Session, type SessionConfig, type SessionManager, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createOAuthManager, createOAuthRouter, createPostgresAdapter, generateCodename, isValidCodename };
+export { AnonAuthConfig, AnonAuthHooks, type AnonAuthInstance, type CleanupScheduler, type CreateAccountResult, CsrfConfig, DatabaseAdapter, type EmailConfig, type EmailService, EnterpriseBindingApi, EnterpriseConfig, type IPFSRecoveryConfig, type IPFSRecoveryManager, type MPCAccount, MPCAccountManager, type MPCAccountManagerConfig, type MPCConfig, OAuthConfig, type OAuthManager, type OAuthProfile, type OAuthProviderConfig, type OAuthTokens, POSTGRES_ENTERPRISE_SCHEMA, POSTGRES_SCHEMA, type PasskeyConfig, type PasskeyManager, RateLimitConfig, RelatedOrigin, Session, type SessionConfig, type SessionManager, SessionTrack, type WalletRecoveryManager, createAnonAuth, createCleanupScheduler, createEmailService, createEnterpriseBinding, createOAuthManager, createOAuthRouter, createPostgresAdapter, createScimRouter, generateCodename, isValidCodename };
