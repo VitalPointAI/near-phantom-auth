@@ -11,7 +11,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import bs58 from 'bs58';
 import BN from 'bn.js';
 import nacl from 'tweetnacl';
-import { MPCAccountManager } from '../server/mpc.js';
+import { MPCAccountManager, buildSignedTransaction } from '../server/mpc.js';
+import { KeyPair } from '@near-js/crypto';
+import {
+  createTransaction,
+  encodeTransaction,
+  actionCreators,
+  SignedTransaction,
+  Signature,
+} from '@near-js/transactions';
 
 // ============================================
 // DEBT-02: base58Encode replacement
@@ -78,60 +86,75 @@ describe('yoctoNEAR conversion - BUG-01', () => {
 // ============================================
 // BUG-02: buildSignedTransaction byte layout
 // ============================================
-
-// Duplicate of the fixed buildSignedTransaction for testing
-function buildSignedTransactionFixed(
-  transaction: Uint8Array,
-  signature: Uint8Array,
-  publicKey: Uint8Array
-): Uint8Array {
-  const parts: Uint8Array[] = [];
-  parts.push(transaction);
-  parts.push(new Uint8Array([0]));           // keyType: 1 byte (ED25519 = 0)
-  parts.push(new Uint8Array(publicKey));     // publicKey: 32 bytes
-  parts.push(new Uint8Array(signature));     // signature data: 64 bytes
-  const totalLength = parts.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of parts) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
+//
+// These tests import the REAL buildSignedTransaction. An earlier version of
+// this block tested a local copy named `buildSignedTransactionFixed` that
+// duplicated the shipped layout, and asserted the signature section was 97
+// bytes (1 type + 32 pubkey + 64 sig). That made the suite green while the
+// shipped encoder stayed broken, and it asserted the defect as the contract:
+// anyone fixing the real function would have seen three tests go red and
+// concluded they had caused a regression.
+//
+// The oracle here is @near-js/transactions -- the package this library already
+// depends on and the same encoder nearcore round-trips. Hand-rolled borsh is
+// invisible to the type system, so bytes are the only thing worth asserting.
 
 describe('buildSignedTransaction - BUG-02', () => {
-  const transaction = new Uint8Array([1, 2, 3, 4]);
-  const publicKey = new Uint8Array(32).fill(0xAB);  // 32 bytes
-  const signature = new Uint8Array(64).fill(0xCD);  // 64 bytes
+  // A real, fully-formed transfer transaction rather than a stub, so the
+  // comparison is against something the RPC would actually accept.
+  const keyPair = KeyPair.fromRandom('ed25519');
+  const publicKey = keyPair.getPublicKey();
+  const transactionObj = createTransaction(
+    'alice.near',
+    publicKey,
+    'bob.near',
+    1n,
+    [actionCreators.transfer(10n ** 22n)],
+    new Uint8Array(32).fill(7)
+  );
+  const transaction = encodeTransaction(transactionObj);
+  const signature = keyPair.sign(transaction).signature;
 
-  it('output starts with transaction bytes', () => {
-    const result = buildSignedTransactionFixed(transaction, signature, publicKey);
-    expect(Array.from(result.slice(0, 4))).toEqual([1, 2, 3, 4]);
+  /** The authoritative encoding, produced by @near-js/transactions itself. */
+  const official = new SignedTransaction({
+    transaction: transactionObj,
+    signature: new Signature({ keyType: publicKey.keyType, data: signature }),
+  }).encode();
+
+  it('is byte-identical to the @near-js/transactions encoding', () => {
+    const result = buildSignedTransaction(transaction, signature);
+    expect(Buffer.from(result).equals(Buffer.from(official))).toBe(true);
+  });
+
+  it('appends exactly 65 bytes: 1 key-type byte + 64 signature bytes', () => {
+    const result = buildSignedTransaction(transaction, signature);
+    expect(result.length - transaction.length).toBe(65);
+  });
+
+  it('output starts with the transaction bytes unmodified', () => {
+    const result = buildSignedTransaction(transaction, signature);
+    expect(Buffer.from(result.slice(0, transaction.length)).equals(Buffer.from(transaction))).toBe(true);
   });
 
   it('byte at transaction.length is 0x00 (ED25519 key type)', () => {
-    const result = buildSignedTransactionFixed(transaction, signature, publicKey);
+    const result = buildSignedTransaction(transaction, signature);
     expect(result[transaction.length]).toBe(0x00);
   });
 
-  it('output includes 32-byte public key after key type byte', () => {
-    const result = buildSignedTransactionFixed(transaction, signature, publicKey);
-    const keyStart = transaction.length + 1;
-    const extractedKey = result.slice(keyStart, keyStart + 32);
-    expect(Array.from(extractedKey)).toEqual(Array.from(publicKey));
+  it('the 64 bytes after the key-type byte are the signature', () => {
+    const result = buildSignedTransaction(transaction, signature);
+    const sigStart = transaction.length + 1;
+    expect(Buffer.from(result.slice(sigStart, sigStart + 64)).equals(Buffer.from(signature))).toBe(true);
   });
 
-  it('next 64 bytes after public key are the signature', () => {
-    const result = buildSignedTransactionFixed(transaction, signature, publicKey);
-    const sigStart = transaction.length + 1 + 32;
-    const extractedSig = result.slice(sigStart, sigStart + 64);
-    expect(Array.from(extractedSig)).toEqual(Array.from(signature));
-  });
-
-  it('total signature section is 97 bytes (1 type + 32 pubkey + 64 sig)', () => {
-    const result = buildSignedTransactionFixed(transaction, signature, publicKey);
-    expect(result.length).toBe(transaction.length + 97);
+  it('does NOT re-emit the public key into the signature field (the 0.8.0 bug)', () => {
+    // The regression this guards: transaction ++ [0] ++ publicKey ++ signature.
+    // The public key is already inside the transaction body; a second copy
+    // shifts the signature by 32 bytes and the RPC rejects the transaction.
+    const result = buildSignedTransaction(transaction, signature);
+    const afterKeyType = result.slice(transaction.length + 1, transaction.length + 1 + 32);
+    expect(Buffer.from(afterKeyType).equals(Buffer.from(publicKey.data))).toBe(false);
+    expect(result.length - transaction.length).not.toBe(97);
   });
 });
 
