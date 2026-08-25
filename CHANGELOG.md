@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-08-25
+
+### Fixed
+- **`buildSignedTransaction` emitted the signer's public key into the `Signature`
+  field of the `SignedTransaction` envelope**, producing
+  `transaction ++ [key_type] ++ publicKey(32) ++ signature(64)` instead of the
+  correct `transaction ++ [key_type] ++ signature(64)`. The public key is already
+  encoded inside the `Transaction` body, so the second copy shifted the signature
+  by 32 bytes and every such transaction was rejected by the RPC with
+  `Failed to decode transaction: signature error`.
+
+  Consequence: `MPCAccountManager.createAccount` could never fund an account from
+  the treasury, so **no account could be created** — neither via the passkey path
+  nor any guest-fallback path built on it. Output is now byte-identical to
+  `@near-js/transactions`' own `SignedTransaction` encoding.
+
+### Added
+- `buildSignedTransaction` is now exported, so its byte layout can be asserted
+  directly against `@near-js/transactions` rather than against a copy of itself.
+
+### Changed
+- The `BUG-02` test block previously exercised a local duplicate
+  (`buildSignedTransactionFixed`) rather than the real function, and asserted the
+  broken 97-byte signature section as correct. It has been replaced with tests
+  that import the real function and compare bytes against the official encoder.
+  Mutation-proven: reinstating the stray 32 bytes turns 4 of 18 tests red.
+
+### Compatibility
+- No public API removed. Consumers on `^0.8.0` pick this up automatically;
+  anyone pinning `0.8.0` exactly must bump to get a working account-creation path.
+
 ## [0.8.0] — 2026-05-31
 
 ### Added
