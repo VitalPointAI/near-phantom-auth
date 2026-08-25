@@ -203,7 +203,7 @@ async function fundAccountFromTreasury(
     const signature = nacl.default.sign.detached(txHash, secretKey as Uint8Array);
     
     // Build signed transaction
-    const signedTx = buildSignedTransaction(transaction, signature, publicKey);
+    const signedTx = buildSignedTransaction(transaction, signature);
     
     // Submit to RPC
     const submitResponse = await fetch(rpcUrl, {
@@ -283,21 +283,35 @@ function buildTransferTransaction(
 }
 
 /**
- * Build signed transaction
+ * Build a borsh-encoded SignedTransaction.
+ *
+ * Layout (nearcore primitives, `SignedTransaction`):
+ *
+ *     SignedTransaction := Transaction ++ Signature
+ *     Signature         := key_type: u8 ++ data: [u8; 64]
+ *
+ * The signer's public key is NOT part of the Signature -- it is already
+ * encoded inside the Transaction body by buildTransferTransaction. Emitting
+ * it a second time here shifted the signature field by 32 bytes, and the RPC
+ * rejected every such transaction with "Failed to decode transaction:
+ * signature error". That is what shipped through 0.8.0, and it meant no
+ * account could ever be funded from the treasury.
+ *
+ * Exported for tests: this is hand-rolled borsh, invisible to the type
+ * system, so the only meaningful guard is asserting the bytes against
+ * @near-js/transactions' own encoder.
  */
-function buildSignedTransaction(
+export function buildSignedTransaction(
   transaction: Uint8Array,
-  signature: Uint8Array,
-  publicKey: Uint8Array
+  signature: Uint8Array
 ): Uint8Array {
   const parts: Uint8Array[] = [];
 
   // Transaction bytes
   parts.push(transaction);
 
-  // Signature enum (ED25519 = 0)
+  // Signature := key_type (ED25519 = 0) ++ 64 signature bytes. No public key.
   parts.push(new Uint8Array([0]));           // keyType: 1 byte
-  parts.push(new Uint8Array(publicKey));     // publicKey: 32 bytes
   parts.push(new Uint8Array(signature));     // signature data: 64 bytes
 
   return concatArrays(parts);

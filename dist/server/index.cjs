@@ -1455,7 +1455,7 @@ async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amou
     );
     const txHash = crypto$1.createHash("sha256").update(transaction).digest();
     const signature = nacl2.default.sign.detached(txHash, secretKey);
-    const signedTx = buildSignedTransaction(transaction, signature, publicKey);
+    const signedTx = buildSignedTransaction(transaction, signature);
     const submitResponse = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1498,11 +1498,10 @@ function buildTransferTransaction(signerId, publicKey, nonce, receiverId, blockH
   parts.push(serializeU128(amount));
   return concatArrays(parts);
 }
-function buildSignedTransaction(transaction, signature, publicKey) {
+function buildSignedTransaction(transaction, signature) {
   const parts = [];
   parts.push(transaction);
   parts.push(new Uint8Array([0]));
-  parts.push(new Uint8Array(publicKey));
   parts.push(new Uint8Array(signature));
   return concatArrays(parts);
 }
