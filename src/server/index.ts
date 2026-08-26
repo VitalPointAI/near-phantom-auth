@@ -164,6 +164,8 @@ export function createAnonAuth(config: AnonAuthConfig): AnonAuthInstance {
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
     fundingAmount: config.mpc?.fundingAmount,
     derivationSalt: config.mpc?.derivationSalt ?? config.derivationSalt,
+    rpcUrl: config.mpc?.rpcUrl,
+    rpcHeaders: config.mpc?.rpcHeaders,
     logger,
   });
 

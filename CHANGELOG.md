@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `mpc.rpcUrl` and `mpc.rpcHeaders` — configure the RPC endpoint used for every
+  NEAR call made during account creation (`view_account`, `view_access_key`,
+  `broadcast_tx_commit`). Previously `rpc.mainnet.near.org` was hardcoded with
+  no override, so a consumer on a paid provider silently kept using the free
+  shared endpoint. Defaults are unchanged, so existing consumers are unaffected.
+
 ## [0.8.1] — 2026-08-25
 
 ### Fixed

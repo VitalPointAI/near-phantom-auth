@@ -515,6 +515,25 @@ export interface MPCAccountConfig {
 
   /** Server-side secret salt for NEAR account derivation (forwarded from AnonAuthConfig) */
   derivationSalt?: string;
+
+  /**
+   * RPC endpoint for every NEAR call this library makes during account
+   * creation — `view_account`, `view_access_key`, and `broadcast_tx_commit`.
+   *
+   * Defaults to the free public endpoint (`rpc.mainnet.near.org` /
+   * `rpc.testnet.near.org`). That default is fine for development and risky in
+   * production: it is shared and rate-limited, and an app onboarding many
+   * users at once — especially from a single NAT — can exhaust its budget. A
+   * throttled call here is not a degraded experience, it is a user who cannot
+   * create an account at all.
+   */
+  rpcUrl?: string;
+
+  /**
+   * Headers sent with every RPC call, for providers that authenticate with
+   * one — e.g. `{ Authorization: 'Bearer ' + process.env.FASTNEAR_API_KEY }`.
+   */
+  rpcHeaders?: Record<string, string>;
 }
 
 export interface OAuthConfig {

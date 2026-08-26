@@ -1371,16 +1371,23 @@ function getMPCContractId(networkId) {
 function getRPCUrl(networkId) {
   return networkId === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org";
 }
+function resolveRpcEndpoint(networkId, rpcUrl, rpcHeaders) {
+  return {
+    url: rpcUrl || getRPCUrl(networkId),
+    headers: { "Content-Type": "application/json", ...rpcHeaders ?? {} }
+  };
+}
 function derivePublicKey(seed) {
   const hash = createHash("sha512").update(seed).digest();
   return hash.subarray(0, 32);
 }
-async function accountExists(accountId, networkId) {
+async function accountExists(accountId, networkId, endpoint) {
   try {
-    const rpcUrl = getRPCUrl(networkId);
+    const rpc = endpoint ?? resolveRpcEndpoint(networkId);
+    const rpcUrl = rpc.url;
     const response = await fetch(rpcUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: "check-account",
@@ -1398,10 +1405,11 @@ async function accountExists(accountId, networkId) {
     return false;
   }
 }
-async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amountNear, networkId, log2) {
+async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amountNear, networkId, log2, endpoint) {
   const nacl2 = await import('tweetnacl');
   try {
-    const rpcUrl = getRPCUrl(networkId);
+    const rpc = endpoint ?? resolveRpcEndpoint(networkId);
+    const rpcUrl = rpc.url;
     const secretKey = bs582.decode(keyPair.toString().replace("ed25519:", ""));
     const publicKey = secretKey.length === 64 ? secretKey.slice(32) : nacl2.default.sign.keyPair.fromSeed(secretKey.slice(0, 32)).publicKey;
     const publicKeyB58 = bs582.encode(Buffer.from(publicKey));
@@ -1409,7 +1417,7 @@ async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amou
     log2.info({ accountId: treasuryAccount }, "Treasury public key verified");
     const accessKeyResponse = await fetch(rpcUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: "get-access-key",
@@ -1449,7 +1457,7 @@ async function fundAccountFromTreasury(accountId, treasuryAccount, keyPair, amou
     const signedTx = buildSignedTransaction(transaction, signature);
     const submitResponse = await fetch(rpcUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: "send-tx",
@@ -1539,6 +1547,8 @@ function isTreasuryUnderfunded(error) {
 var warnedNoDerivationSalt = false;
 var MPCAccountManager = class {
   networkId;
+  /** Resolved once in the constructor; every RPC call in this class uses it. */
+  rpc;
   mpcContractId;
   accountPrefix;
   treasuryAccount;
@@ -1549,6 +1559,7 @@ var MPCAccountManager = class {
   log;
   constructor(config) {
     this.networkId = config.networkId;
+    this.rpc = resolveRpcEndpoint(config.networkId, config.rpcUrl, config.rpcHeaders);
     this.mpcContractId = getMPCContractId(config.networkId);
     this.accountPrefix = config.accountPrefix || "anon";
     this.treasuryAccount = config.treasuryAccount;
@@ -1601,7 +1612,7 @@ var MPCAccountManager = class {
     const publicKey = `ed25519:${bs582.encode(publicKeyBytes)}`;
     const derivationPath = `near-anon-auth,${userId}`;
     this.log.info({ accountId: implicitAccountId, network: this.networkId }, "Creating NEAR account");
-    const alreadyExists = await accountExists(implicitAccountId, this.networkId);
+    const alreadyExists = await accountExists(implicitAccountId, this.networkId, this.rpc);
     if (alreadyExists) {
       this.log.info({ accountId: implicitAccountId }, "Implicit account already on-chain, short-circuiting");
       return {
@@ -1628,7 +1639,8 @@ var MPCAccountManager = class {
       // MPC-09: pass KeyPair object directly; raw key string never re-appears on call stack
       this.fundingAmount,
       this.networkId,
-      this.log
+      this.log,
+      this.rpc
     );
     if (fundResult.success) {
       this.log.info({ txHash: fundResult.txHash }, "Account funded");
@@ -1640,7 +1652,7 @@ var MPCAccountManager = class {
       };
     }
     if (isLikelyNonceRace(fundResult.error)) {
-      const existsNow = await accountExists(implicitAccountId, this.networkId);
+      const existsNow = await accountExists(implicitAccountId, this.networkId, this.rpc);
       if (existsNow) {
         this.log.info({ accountId: implicitAccountId }, "Concurrent provisioning detected; account now exists");
         return {
@@ -1676,13 +1688,14 @@ var MPCAccountManager = class {
       return { success: false };
     }
     try {
-      const rpcUrl = getRPCUrl(this.networkId);
+      const rpc = this.rpc;
+      const rpcUrl = rpc.url;
       const signer = new KeyPairSigner(this.keyPair);
       const signerPublicKey = await signer.getPublicKey();
       const signerPublicKeyStr = signerPublicKey.toString();
       const accessKeyResponse = await fetch(rpcUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: rpc.headers,
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: "get-access-key",
@@ -1724,7 +1737,7 @@ var MPCAccountManager = class {
       const encoded = Buffer.from(signedTx.encode()).toString("base64");
       const submitResponse = await fetch(rpcUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: rpc.headers,
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: "send-tx",
@@ -4152,6 +4165,8 @@ function createAnonAuth(config) {
     treasuryPrivateKey: config.mpc?.treasuryPrivateKey,
     fundingAmount: config.mpc?.fundingAmount,
     derivationSalt: config.mpc?.derivationSalt ?? config.derivationSalt,
+    rpcUrl: config.mpc?.rpcUrl,
+    rpcHeaders: config.mpc?.rpcHeaders,
     logger
   });
   let walletRecovery;
