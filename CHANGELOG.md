@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `CreateSessionInput` now declares `id`. `sessionManager.createSession` passed
+  it at runtime and signed that id into the session cookie, but the field was
+  absent from the published adapter contract — so a custom adapter written
+  correctly against the types generated its own id, the cookie named a row that
+  did not exist, and **every authenticated request failed with 401** while
+  sign-in itself appeared to succeed. Also removed the `as Session` cast that
+  was concealing the gap, so drift is now a type error.
+
 ## [0.8.2] — 2026-08-26
 
 ### Added
