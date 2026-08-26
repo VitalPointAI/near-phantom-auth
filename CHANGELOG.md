@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-08-26
+
 ### Added
 - `mpc.rpcUrl` and `mpc.rpcHeaders` — configure the RPC endpoint used for every
   NEAR call made during account creation (`view_account`, `view_access_key`,
