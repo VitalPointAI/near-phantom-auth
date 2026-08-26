@@ -212,10 +212,15 @@ export function createSessionManager(
         userAgent: metadata.userAgent,
       };
       
+      // The id MUST reach the adapter: it is what gets signed into the cookie
+      // below, so an adapter that stores a different id produces a cookie
+      // naming a row that does not exist -- 401 on every authenticated request,
+      // while sign-in itself still succeeds. `id` is declared on
+      // CreateSessionInput so an adapter can see it in the contract.
       const session = await db.createSession({
         ...sessionInput,
         id: sessionId,
-      } as Session);
+      });
       
       // Sign and set cookie
       const signedId = signSessionId(sessionId, config.secret);

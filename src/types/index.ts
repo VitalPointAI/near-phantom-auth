@@ -780,6 +780,25 @@ export interface Session {
 }
 
 export interface CreateSessionInput {
+  /**
+   * The session id to store. **An adapter MUST persist this value verbatim
+   * when it is provided, and MUST NOT generate its own.**
+   *
+   * `sessionManager.createSession` generates the id, passes it here, and then
+   * signs THAT id into the session cookie. An adapter that mints its own id
+   * instead produces a cookie pointing at a row that does not exist, so every
+   * authenticated request fails with 401 "Authentication required".
+   *
+   * That failure is unusually hard to diagnose: the sign-in itself succeeds --
+   * the user is created, the row is written, the cookie is set -- and only a
+   * later authenticated call fails. This field was previously passed at
+   * runtime while absent from this interface, so an adapter written correctly
+   * against the published contract still broke sessions, and the type checker
+   * could not catch it.
+   *
+   * Optional so an adapter may generate an id when called outside that path.
+   */
+  id?: string;
   userId: string;
   track?: SessionTrack;
   expiresAt: Date;

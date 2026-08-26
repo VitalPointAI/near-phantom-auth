@@ -405,3 +405,61 @@ describe('refreshSession - BUG-03', () => {
     expect(cookieOnlyWarnings.length).toBe(1);
   });
 });
+
+// ============================================
+// Session id must reach the adapter (cookie/row consistency)
+// ============================================
+//
+// sessionManager.createSession generates a UUID, passes it to
+// db.createSession as `id`, and signs THAT id into the session cookie. If the
+// id never reaches the adapter -- or an adapter ignores it -- the cookie names
+// a row that does not exist and every authenticated request 401s, while
+// sign-in itself still appears to succeed.
+//
+// `id` was passed at runtime but absent from the published CreateSessionInput
+// type, so an adapter implementing the documented contract still broke
+// sessions and the type checker could not catch it. These tests pin the
+// runtime behaviour the cookie depends on.
+
+describe('createSession supplies the session id to the adapter', () => {
+  function stubDeps() {
+    const created: any[] = [];
+    const db: any = {
+      createSession: vi.fn(async (input: any) => {
+        created.push(input);
+        return {
+          id: input.id,
+          userId: input.userId,
+          track: input.track ?? 'anonymous',
+          createdAt: new Date(),
+          expiresAt: input.expiresAt,
+          lastActivityAt: new Date(),
+        };
+      }),
+    };
+    const cookies: Array<{ name: string; value: string }> = [];
+    const res: any = { cookie: (name: string, value: string) => cookies.push({ name, value }) };
+    return { db, res, created, cookies };
+  }
+
+  it('passes an id to db.createSession', async () => {
+    const { db, res, created } = stubDeps();
+    const mgr = createSessionManager(db, { secret: 'test-secret-at-least-16-chars' } as any);
+    await mgr.createSession('user-1', res);
+
+    expect(created).toHaveLength(1);
+    expect(typeof created[0].id).toBe('string');
+    expect(created[0].id.length).toBeGreaterThan(0);
+  });
+
+  it('signs the SAME id into the cookie that it gave the adapter', async () => {
+    const { db, res, created, cookies } = stubDeps();
+    const mgr = createSessionManager(db, { secret: 'test-secret-at-least-16-chars' } as any);
+    await mgr.createSession('user-1', res);
+
+    expect(cookies).toHaveLength(1);
+    // Cookie value is `${sessionId}.${hmac}` -- the id half must match the row.
+    const idInCookie = cookies[0]!.value.split('.')[0];
+    expect(idInCookie).toBe(created[0].id);
+  });
+});
