@@ -330,6 +330,11 @@ describe('configurable RPC endpoint', () => {
     derivationSalt: 'test-salt-not-a-real-one',
   };
 
+  /** Exact hostnames of every RPC call made, for equality comparison. */
+  function hostsOf(calls: Array<{ url: string }>): string[] {
+    return calls.map((c) => new URL(c.url).hostname);
+  }
+
   function captureFetch() {
     const calls: Array<{ url: string; headers: Record<string, string> }> = [];
     const spy = vi.fn(async (url: any, init: any) => {
@@ -355,8 +360,12 @@ describe('configurable RPC endpoint', () => {
     await mgr.createAccount('user-1').catch(() => undefined);
 
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls.every((c) => c.url === 'https://rpc.mainnet.fastnear.com')).toBe(true);
-    expect(calls.some((c) => c.url.includes('rpc.mainnet.near.org'))).toBe(false);
+    // Compare parsed hostnames, never substrings: 'rpc.mainnet.near.org' can
+    // appear anywhere in a URL (a path, a query parameter, a userinfo section)
+    // without being the host actually contacted, so `includes()` would both
+    // miss real regressions and fire on harmless ones.
+    expect(hostsOf(calls)).toEqual(calls.map(() => 'rpc.mainnet.fastnear.com'));
+    expect(hostsOf(calls)).not.toContain('rpc.mainnet.near.org');
   });
 
   it('sends configured rpcHeaders on every RPC call', async () => {
@@ -384,6 +393,6 @@ describe('configurable RPC endpoint', () => {
     await mgr.createAccount('user-3').catch(() => undefined);
 
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls.every((c) => c.url === 'https://rpc.mainnet.near.org')).toBe(true);
+    expect(hostsOf(calls)).toEqual(calls.map(() => 'rpc.mainnet.near.org'));
   });
 });
