@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import bs58 from 'bs58';
 import BN from 'bn.js';
 import nacl from 'tweetnacl';
-import { MPCAccountManager, buildSignedTransaction } from '../server/mpc.js';
+import { MPCAccountManager, buildSignedTransaction, createMPCManager } from '../server/mpc.js';
 import { KeyPair } from '@near-js/crypto';
 import {
   createTransaction,
@@ -309,5 +309,81 @@ describe('addRecoveryWallet - STUB-01', () => {
     });
 
     expect(broadcastCall).toBeDefined();
+  });
+});
+
+// ============================================
+// Configurable RPC endpoint
+// ============================================
+//
+// The library previously hardcoded rpc.mainnet.near.org with no override, so a
+// consumer on a paid provider silently kept using the free shared endpoint for
+// every account creation. These tests assert the override is actually USED --
+// not merely accepted by the type system, which is what a config option that
+// is threaded incorrectly looks like from the outside.
+
+describe('configurable RPC endpoint', () => {
+  const baseConfig = {
+    networkId: 'mainnet' as const,
+    treasuryAccount: 'treasury.near',
+    treasuryPrivateKey: KeyPair.fromRandom('ed25519').toString(),
+    derivationSalt: 'test-salt-not-a-real-one',
+  };
+
+  function captureFetch() {
+    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+    const spy = vi.fn(async (url: any, init: any) => {
+      calls.push({ url: String(url), headers: { ...(init?.headers ?? {}) } });
+      // Shape just enough for accountExists() to resolve "does not exist".
+      return {
+        ok: true,
+        json: async () => ({ error: { cause: { name: 'UNKNOWN_ACCOUNT' } } }),
+      } as any;
+    });
+    return { calls, spy };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the configured rpcUrl instead of the public endpoint', async () => {
+    const { calls, spy } = captureFetch();
+    vi.stubGlobal('fetch', spy);
+
+    const mgr = createMPCManager({ ...baseConfig, rpcUrl: 'https://rpc.mainnet.fastnear.com' });
+    await mgr.createAccount('user-1').catch(() => undefined);
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.url === 'https://rpc.mainnet.fastnear.com')).toBe(true);
+    expect(calls.some((c) => c.url.includes('rpc.mainnet.near.org'))).toBe(false);
+  });
+
+  it('sends configured rpcHeaders on every RPC call', async () => {
+    const { calls, spy } = captureFetch();
+    vi.stubGlobal('fetch', spy);
+
+    const mgr = createMPCManager({
+      ...baseConfig,
+      rpcUrl: 'https://rpc.mainnet.fastnear.com',
+      rpcHeaders: { Authorization: 'Bearer test-key' },
+    });
+    await mgr.createAccount('user-2').catch(() => undefined);
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.headers.Authorization === 'Bearer test-key')).toBe(true);
+    // The provider header must not displace the content type.
+    expect(calls.every((c) => c.headers['Content-Type'] === 'application/json')).toBe(true);
+  });
+
+  it('falls back to the public endpoint when no rpcUrl is given', async () => {
+    const { calls, spy } = captureFetch();
+    vi.stubGlobal('fetch', spy);
+
+    const mgr = createMPCManager(baseConfig);
+    await mgr.createAccount('user-3').catch(() => undefined);
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.url === 'https://rpc.mainnet.near.org')).toBe(true);
   });
 });

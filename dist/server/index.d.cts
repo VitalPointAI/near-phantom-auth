@@ -1,6 +1,6 @@
 import { Response, Request, Router, RequestHandler } from 'express';
-import { S as SessionTrack, f as Session, g as SessionMetadataConfig, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, h as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, i as Passkey, j as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, k as RateLimitConfig, C as CsrfConfig, l as AnonAuthHooks, E as EnterpriseConfig, m as EnterpriseBindingApi, n as AnonAuthConfig } from '../index-DtCH3Eu-.cjs';
-export { o as AfterAuthSuccessCtx, p as AfterAuthSuccessProvider, q as AfterAuthSuccessResult, r as AnalyticsEvent, s as AnonUser, B as BackfillKeyBundleCtx, t as BackfillKeyBundleResult, u as BackfillReason, v as CreateEnterpriseUserInput, w as EnterpriseEventMap, x as EnterpriseStatus, y as EnterpriseUser, z as OAuthProvider, F as OAuthUser, U as User, G as UserType } from '../index-DtCH3Eu-.cjs';
+import { S as SessionTrack, f as Session, g as SessionMetadataConfig, e as PublicKeyCredentialCreationOptionsJSON, a as RegistrationResponseJSON, h as AuthenticatorTransport, P as PublicKeyCredentialRequestOptionsJSON, c as AuthenticationResponseJSON, i as Passkey, j as RelatedOrigin, D as DatabaseAdapter, O as OAuthConfig, k as RateLimitConfig, C as CsrfConfig, l as AnonAuthHooks, E as EnterpriseConfig, m as EnterpriseBindingApi, n as AnonAuthConfig } from '../index-DuQqJW90.cjs';
+export { o as AfterAuthSuccessCtx, p as AfterAuthSuccessProvider, q as AfterAuthSuccessResult, r as AnalyticsEvent, s as AnonUser, B as BackfillKeyBundleCtx, t as BackfillKeyBundleResult, u as BackfillReason, v as CreateEnterpriseUserInput, w as EnterpriseEventMap, x as EnterpriseStatus, y as EnterpriseUser, z as OAuthProvider, F as OAuthUser, U as User, G as UserType } from '../index-DuQqJW90.cjs';
 import { Logger } from 'pino';
 export { CreateAuthenticationOptionsInput, CreateAuthenticationOptionsResult, CreateRegistrationOptionsInput, CreateRegistrationOptionsResult, StoredCredential, VerifyAuthenticationInput, VerifyAuthenticationResult, VerifyRegistrationInput, VerifyRegistrationResult, base64urlToUint8Array, createAuthenticationOptions, createRegistrationOptions, uint8ArrayToBase64url, verifyAuthentication, verifyRegistration } from '../webauthn/index.cjs';
 
@@ -121,6 +121,16 @@ interface MPCConfig {
     treasuryPrivateKey?: string;
     fundingAmount?: string;
     derivationSalt?: string;
+    /**
+     * RPC endpoint override. Defaults to the free public endpoint for the
+     * network. Set this to your own provider in production.
+     */
+    rpcUrl?: string;
+    /**
+     * Headers sent with every RPC call, e.g.
+     * `{ Authorization: 'Bearer ' + FASTNEAR_API_KEY }`.
+     */
+    rpcHeaders?: Record<string, string>;
     /** Optional pino logger instance. If omitted, logging is disabled (no output). */
     logger?: Logger;
 }
@@ -135,6 +145,10 @@ interface MPCAccountManagerConfig {
     treasuryPrivateKey: string;
     derivationSalt: string;
     fundingAmount?: string;
+    /** RPC endpoint override. Defaults to the free public endpoint. */
+    rpcUrl?: string;
+    /** Headers sent with every RPC call (e.g. a provider API key). */
+    rpcHeaders?: Record<string, string>;
     logger?: Logger;
 }
 /**
@@ -147,6 +161,8 @@ type CreateAccountResult = MPCAccount;
  */
 declare class MPCAccountManager {
     private networkId;
+    /** Resolved once in the constructor; every RPC call in this class uses it. */
+    private rpc;
     private mpcContractId;
     private accountPrefix;
     private treasuryAccount?;

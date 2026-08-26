@@ -30,6 +30,16 @@ export interface MPCConfig {
   treasuryPrivateKey?: string;
   fundingAmount?: string; // in NEAR, default 0.01
   derivationSalt?: string;
+  /**
+   * RPC endpoint override. Defaults to the free public endpoint for the
+   * network. Set this to your own provider in production.
+   */
+  rpcUrl?: string;
+  /**
+   * Headers sent with every RPC call, e.g.
+   * `{ Authorization: 'Bearer ' + FASTNEAR_API_KEY }`.
+   */
+  rpcHeaders?: Record<string, string>;
   /** Optional pino logger instance. If omitted, logging is disabled (no output). */
   logger?: Logger;
 }
@@ -45,6 +55,10 @@ export interface MPCAccountManagerConfig {
   treasuryPrivateKey: string;
   derivationSalt: string;
   fundingAmount?: string;
+  /** RPC endpoint override. Defaults to the free public endpoint. */
+  rpcUrl?: string;
+  /** Headers sent with every RPC call (e.g. a provider API key). */
+  rpcHeaders?: Record<string, string>;
   logger?: Logger;
 }
 
@@ -64,12 +78,41 @@ function getMPCContractId(networkId: 'testnet' | 'mainnet'): string {
 }
 
 /**
- * Get the RPC URL for a network
+ * A resolved RPC endpoint: where to send JSON-RPC, and any headers it needs.
+ *
+ * A bare URL is not enough for a paid provider (FastNEAR, Pagoda, a private
+ * node) — those authenticate with a header.
+ */
+export interface RpcEndpoint {
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * Get the DEFAULT public RPC URL for a network.
+ *
+ * These are the free, shared, rate-limited public endpoints — a reasonable
+ * default for development and a poor one for production. An app that onboards
+ * many users in a burst, all from one venue NAT, can exhaust the public
+ * endpoint's budget, and a throttled call here means a user cannot create an
+ * account at all. Set `rpcUrl` on MPCConfig to use your own provider.
  */
 function getRPCUrl(networkId: 'testnet' | 'mainnet'): string {
   return networkId === 'mainnet'
     ? 'https://rpc.mainnet.near.org'
     : 'https://rpc.testnet.near.org';
+}
+
+/** Resolve the endpoint to use, falling back to the public one. */
+function resolveRpcEndpoint(
+  networkId: 'testnet' | 'mainnet',
+  rpcUrl?: string,
+  rpcHeaders?: Record<string, string>
+): RpcEndpoint {
+  return {
+    url: rpcUrl || getRPCUrl(networkId),
+    headers: { 'Content-Type': 'application/json', ...(rpcHeaders ?? {}) },
+  };
 }
 
 /**
@@ -85,13 +128,15 @@ function derivePublicKey(seed: Buffer): Buffer {
  */
 async function accountExists(
   accountId: string, 
-  networkId: 'testnet' | 'mainnet'
+  networkId: 'testnet' | 'mainnet',
+  endpoint?: RpcEndpoint
 ): Promise<boolean> {
   try {
-    const rpcUrl = getRPCUrl(networkId);
+    const rpc = endpoint ?? resolveRpcEndpoint(networkId);
+    const rpcUrl = rpc.url;
     const response = await fetch(rpcUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'check-account',
@@ -129,12 +174,14 @@ async function fundAccountFromTreasury(
   keyPair: KeyPair,
   amountNear: string,
   networkId: 'testnet' | 'mainnet',
-  log: Logger
+  log: Logger,
+  endpoint?: RpcEndpoint
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   const nacl = await import('tweetnacl');
 
   try {
-    const rpcUrl = getRPCUrl(networkId);
+    const rpc = endpoint ?? resolveRpcEndpoint(networkId);
+    const rpcUrl = rpc.url;
 
     // MPC-09: derive secretKey + publicKey from the cached KeyPair object.
     // The raw private-key string never re-appears on this call stack.
@@ -151,7 +198,7 @@ async function fundAccountFromTreasury(
     // Get access key for nonce and block hash
     const accessKeyResponse = await fetch(rpcUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'get-access-key',
@@ -208,7 +255,7 @@ async function fundAccountFromTreasury(
     // Submit to RPC
     const submitResponse = await fetch(rpcUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: rpc.headers,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'send-tx',
@@ -388,6 +435,8 @@ let warnedNoDerivationSalt = false;
  */
 export class MPCAccountManager {
   private networkId: 'testnet' | 'mainnet';
+  /** Resolved once in the constructor; every RPC call in this class uses it. */
+  private rpc: RpcEndpoint;
   private mpcContractId: string;
   private accountPrefix: string;
   private treasuryAccount?: string;
@@ -398,6 +447,7 @@ export class MPCAccountManager {
 
   constructor(config: MPCConfig) {
     this.networkId = config.networkId;
+    this.rpc = resolveRpcEndpoint(config.networkId, config.rpcUrl, config.rpcHeaders);
     this.mpcContractId = getMPCContractId(config.networkId);
     this.accountPrefix = config.accountPrefix || 'anon';
     this.treasuryAccount = config.treasuryAccount;
@@ -467,7 +517,7 @@ export class MPCAccountManager {
     this.log.info({ accountId: implicitAccountId, network: this.networkId }, 'Creating NEAR account');
 
     // Step 2: Idempotency check (MPC-03) — view_account short-circuit
-    const alreadyExists = await accountExists(implicitAccountId, this.networkId);
+    const alreadyExists = await accountExists(implicitAccountId, this.networkId, this.rpc);
     if (alreadyExists) {
       this.log.info({ accountId: implicitAccountId }, 'Implicit account already on-chain, short-circuiting');
       return {
@@ -498,7 +548,8 @@ export class MPCAccountManager {
       this.keyPair,             // MPC-09: pass KeyPair object directly; raw key string never re-appears on call stack
       this.fundingAmount,
       this.networkId,
-      this.log
+      this.log,
+      this.rpc
     );
 
     if (fundResult.success) {
@@ -515,7 +566,7 @@ export class MPCAccountManager {
     // If broadcast failed with a nonce-race indicator, re-check view_account.
     // The winner of the race already provisioned the account.
     if (isLikelyNonceRace(fundResult.error)) {
-      const existsNow = await accountExists(implicitAccountId, this.networkId);
+      const existsNow = await accountExists(implicitAccountId, this.networkId, this.rpc);
       if (existsNow) {
         this.log.info({ accountId: implicitAccountId }, 'Concurrent provisioning detected; account now exists');
         return {
@@ -559,7 +610,8 @@ export class MPCAccountManager {
     }
 
     try {
-      const rpcUrl = getRPCUrl(this.networkId);
+      const rpc = this.rpc;
+      const rpcUrl = rpc.url;
 
       // MPC-09: use the cached KeyPair object directly. The raw private-key
       // string was consumed once in the constructor and is not re-materialized here.
@@ -570,7 +622,7 @@ export class MPCAccountManager {
       // Fetch access key nonce + block hash for the signer's key on the user's account
       const accessKeyResponse = await fetch(rpcUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: rpc.headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 'get-access-key',
@@ -625,7 +677,7 @@ export class MPCAccountManager {
       // Broadcast via broadcast_tx_commit
       const submitResponse = await fetch(rpcUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: rpc.headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 'send-tx',
