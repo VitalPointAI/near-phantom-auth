@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-08-26
+
 ### Fixed
 - `CreateSessionInput` now declares `id`. `sessionManager.createSession` passed
   it at runtime and signed that id into the session cookie, but the field was
